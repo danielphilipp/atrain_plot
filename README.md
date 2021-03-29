@@ -25,6 +25,6 @@ month = '07'
 
 dataset 'CCI' #CLAAS3
 
-atrain_plot.main.run(ipath, ifile, opath, dnts, satzs, year, month, dataset)
+atrain_plot.run(ipath, ifile, opath, dnts, satzs, year, month, dataset)
 
 #---------------------------
