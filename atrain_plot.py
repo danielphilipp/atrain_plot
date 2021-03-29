@@ -12,11 +12,8 @@ from atrain_match.utils.get_flag_info import get_calipso_clouds_of_type_i_featur
 from scores import (hitrate, pod_clr, pod_cld, far_clr, far_cld, pofd_clr,
                     pofd_cld, heidke, kuiper, bias, mean)
 
+
 matplotlib.use('Agg')
-
-
-
-
 
 # --------------------------- CTTH ------------------------------------------
 def get_caliop_cth(ds):
