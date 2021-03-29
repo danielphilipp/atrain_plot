@@ -1,4 +1,3 @@
-import sys
 from pyresample import load_area
 from pyresample.bucket import BucketResampler
 import h5py
@@ -9,8 +8,7 @@ import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 from atrain_match.utils import validate_cph_util as vcu
-from atrain_match.utils.get_flag_info import get_calipso_clouds_of_type_i_feature_classification_flags_one_layer
-import cartopy.crs as ccrs
+from atrain_match.utils.get_flag_info import get_calipso_clouds_of_type_i_feature_classification_flags_one_layer as get_cal_flag
 
 matplotlib.use('Agg')
 
@@ -66,7 +64,7 @@ def mean(x, y, n):
     return (x + y) / n
 
 
-### --------------------------- CTTH -------------------------------------------
+# --------------------------- CTTH ------------------------------------------
 def get_caliop_cth(ds):
     cth = np.array(ds['layer_top_altitude'])[:, 0]
     elev = np.array(ds['elevation'])
@@ -101,9 +99,7 @@ def get_imager_ctt(ds):
 def get_calipso_clouds_of_type_i(cflag, calipso_cloudtype=0):
     """Get CALIPSO clouds of type i from top layer."""
     # bits 10-12, start at 1 counting
-    return get_calipso_clouds_of_type_i_feature_classification_flags_one_layer(
-        cflag,
-        calipso_cloudtype=calipso_cloudtype)
+    return get_cal_flag(cflag, calipso_cloudtype=calipso_cloudtype)
 
 
 def get_calipso_low_clouds(cfalg):
@@ -181,9 +177,6 @@ def get_calipso_medium_and_high_clouds_tp(match_calipso):
     return calipso_transp
 
 
-### ----------------------------------------------------------------------------
-
-
 def get_caliop_cph(ds):
     """
     CALIPSO_PHASE_VALUES:   unknown=0,
@@ -216,8 +209,6 @@ def get_imager_cph(ds):
 
 def get_caliop_cma(ds):
     cfrac_limit = 0.5
-    # nlay = np.where(np.array(ds['number_layers_found']) > 0, 1, 0)
-    # caliop_cma = np.logical_and(nlay > 0, np.array(ds['cloud_fraction']) > cfrac_limit)
     caliop_cma = np.array(ds['cloud_fraction']) > cfrac_limit
     return caliop_cma.astype(bool)
 
@@ -230,7 +221,8 @@ def get_imager_cma(ds):
     return binary.astype(bool)
 
 
-def get_collocated_file_info(ipath, chunksize, dnt='ALL', satz_lim=None, dataset='CCI'):
+def get_collocated_file_info(ipath, chunksize, dnt='ALL',
+                             satz_lim=None, dataset='CCI'):
     file = h5py.File(ipath, 'r')
     caliop = file['calipso']
 
@@ -360,18 +352,30 @@ def do_cma_validation(data, adef, out_size, idxs):
     n2d = n.reshape(adef.shape)
 
     scores = dict()
-    scores['Hitrate'] = [hitrate(a, d, n).reshape(adef.shape), 0.5, 1, 'rainbow']
-    scores['PODclr'] = [pod_clr(b, d).reshape(adef.shape), 0.5, 1, 'rainbow']
-    scores['PODcld'] = [pod_cld(a, c).reshape(adef.shape), 0.5, 1, 'rainbow']
-    scores['FARclr'] = [far_clr(c, d).reshape(adef.shape), 0, 1, 'rainbow']
-    scores['FARcld'] = [far_cld(a, b).reshape(adef.shape), 0, 1, 'rainbow']
-    scores['POFDclr'] = [pofd_clr(a, c).reshape(adef.shape), 0, 1, 'rainbow']
-    scores['POFDcld'] = [pofd_cld(b, d).reshape(adef.shape), 0, 1, 'rainbow']
-    scores['Heidke'] = [heidke(a, b, c, d).reshape(adef.shape), 0, 1, 'rainbow']
-    scores['Kuiper'] = [kuiper(a, b, c, d).reshape(adef.shape), 0, 1, 'rainbow']
-    scores['Bias'] = [bias(b, c, n).reshape(adef.shape), 0, 1, 'bwr']
-    scores['CALIOP mean'] = [mean(a, c, n).reshape(adef.shape), None, None, 'rainbow']
-    scores['SEVIRI mean'] = [mean(a, b, n).reshape(adef.shape), None, None, 'rainbow']
+    scores['Hitrate'] = [hitrate(a, d, n).reshape(adef.shape),
+                         0.5, 1, 'rainbow']
+    scores['PODclr'] = [pod_clr(b, d).reshape(adef.shape),
+                        0.5, 1, 'rainbow']
+    scores['PODcld'] = [pod_cld(a, c).reshape(adef.shape),
+                        0.5, 1, 'rainbow']
+    scores['FARclr'] = [far_clr(c, d).reshape(adef.shape),
+                        0, 1, 'rainbow']
+    scores['FARcld'] = [far_cld(a, b).reshape(adef.shape),
+                        0, 1, 'rainbow']
+    scores['POFDclr'] = [pofd_clr(a, c).reshape(adef.shape),
+                         0, 1, 'rainbow']
+    scores['POFDcld'] = [pofd_cld(b, d).reshape(adef.shape),
+                         0, 1, 'rainbow']
+    scores['Heidke'] = [heidke(a, b, c, d).reshape(adef.shape),
+                        0, 1, 'rainbow']
+    scores['Kuiper'] = [kuiper(a, b, c, d).reshape(adef.shape),
+                        0, 1, 'rainbow']
+    scores['Bias'] = [bias(b, c, n).reshape(adef.shape),
+                      0, 1, 'bwr']
+    scores['CALIOP mean'] = [mean(a, c, n).reshape(adef.shape),
+                             None, None, 'rainbow']
+    scores['SEVIRI mean'] = [mean(a, b, n).reshape(adef.shape),
+                             None, None, 'rainbow']
     scores['Nobs'] = [n2d, None, None, 'rainbow']
 
     scores['Bias'][2] = np.nanmax(np.abs(scores['Bias'][0])) / 2
@@ -410,18 +414,30 @@ def do_cph_validation(data, adef, out_size, idxs):
 
     # calculate scores
     scores = dict()
-    scores['Hitrate'] = [hitrate(a, d, n).reshape(adef.shape), 0.5, 1, 'rainbow']
-    scores['PODliq'] = [pod_clr(b, d).reshape(adef.shape), 0.5, 1, 'rainbow']
-    scores['PODice'] = [pod_cld(a, c).reshape(adef.shape), 0.5, 1, 'rainbow']
-    scores['FARliq'] = [far_clr(c, d).reshape(adef.shape), 0, 1, 'rainbow']
-    scores['FARice'] = [far_cld(a, b).reshape(adef.shape), 0, 1, 'rainbow']
-    scores['POFDliq'] = [pofd_clr(a, c).reshape(adef.shape), 0, 1, 'rainbow']
-    scores['POFDice'] = [pofd_cld(b, d).reshape(adef.shape), 0, 1, 'rainbow']
-    scores['Heidke'] = [heidke(a, b, c, d).reshape(adef.shape), 0, 1, 'rainbow']
-    scores['Kuiper'] = [kuiper(a, b, c, d).reshape(adef.shape), 0, 1, 'rainbow']
-    scores['Bias'] = [bias(b, c, n).reshape(adef.shape), 0, 1, 'bwr']
-    scores['CALIOP mean'] = [mean(a, c, n).reshape(adef.shape), None, None, 'rainbow']
-    scores['SEVIRI mean'] = [mean(a, b, n).reshape(adef.shape), None, None, 'rainbow']
+    scores['Hitrate'] = [hitrate(a, d, n).reshape(adef.shape),
+                         0.5, 1, 'rainbow']
+    scores['PODliq'] = [pod_clr(b, d).reshape(adef.shape),
+                        0.5, 1, 'rainbow']
+    scores['PODice'] = [pod_cld(a, c).reshape(adef.shape),
+                        0.5, 1, 'rainbow']
+    scores['FARliq'] = [far_clr(c, d).reshape(adef.shape),
+                        0, 1, 'rainbow']
+    scores['FARice'] = [far_cld(a, b).reshape(adef.shape),
+                        0, 1, 'rainbow']
+    scores['POFDliq'] = [pofd_clr(a, c).reshape(adef.shape),
+                         0, 1, 'rainbow']
+    scores['POFDice'] = [pofd_cld(b, d).reshape(adef.shape),
+                         0, 1, 'rainbow']
+    scores['Heidke'] = [heidke(a, b, c, d).reshape(adef.shape),
+                        0, 1, 'rainbow']
+    scores['Kuiper'] = [kuiper(a, b, c, d).reshape(adef.shape),
+                        0, 1, 'rainbow']
+    scores['Bias'] = [bias(b, c, n).reshape(adef.shape),
+                      0, 1, 'bwr']
+    scores['CALIOP mean'] = [mean(a, c, n).reshape(adef.shape),
+                             None, None, 'rainbow']
+    scores['SEVIRI mean'] = [mean(a, b, n).reshape(adef.shape),
+                             None, None, 'rainbow']
     scores['Nobs'] = [n2d, None, None, 'rainbow']
 
     scores['Bias'][2] = np.nanmax(np.abs(scores['Bias'][0])) / 2
@@ -431,11 +447,14 @@ def do_cph_validation(data, adef, out_size, idxs):
 
 
 def do_ctth_validation(data, resampler, thrs=10):
-    """ thrs: threshold value for filtering out boxes with small number of obs """
+    """ thrs: threshold value for filtering boxes with small number of obs """
     # mask of detected ctth
-    detected_clouds = da.logical_and(data['caliop_cma'] == 1, data['imager_cma'] == 1)
-    detected_height = da.logical_and(detected_clouds, np.isfinite(data['imager_cth']))
-    detected_temperature = np.logical_and(detected_clouds, np.isfinite(data['imager_ctt']))
+    detected_clouds = da.logical_and(data['caliop_cma'] == 1,
+                                     data['imager_cma'] == 1)
+    detected_height = da.logical_and(detected_clouds,
+                                     np.isfinite(data['imager_cth']))
+    detected_temperature = np.logical_and(detected_clouds,
+                                          np.isfinite(data['imager_ctt']))
     detected_height_mask = detected_height.astype(int)
 
     # calculate bias and mea for all ctth cases
@@ -449,7 +468,7 @@ def do_ctth_validation(data, resampler, thrs=10):
     low_clouds = get_calipso_low_clouds(data['caliop_cflag'])
     detected_low = np.logical_and(detected_height, low_clouds)
     bias_low = np.where(detected_low, height_bias, np.nan)
-    bias_temperature_low = np.where(detected_low, temperature_bias, np.nan)  # TEMPERATURE
+    bias_temperature_low = np.where(detected_low, temperature_bias, np.nan)
     mid_clouds = get_calipso_medium_clouds(data['caliop_cflag'])
     detected_mid = np.logical_and(detected_height, mid_clouds)
     bias_mid = np.where(detected_mid, height_bias, np.nan)
@@ -464,7 +483,9 @@ def do_ctth_validation(data, resampler, thrs=10):
     # detected_op = np.logical_and(detected_height,op_clouds)
     # bias_op = np.where(detected_op, height_bias, np.nan)
     # low+opaque, mid/high+transparent
-    mid_high_tp_clouds = get_calipso_medium_and_high_clouds_tp(data['caliop_cflag'])
+    mid_high_tp_clouds = get_calipso_medium_and_high_clouds_tp(
+                                                data['caliop_cflag']
+                                                )
     detected_mid_high_tp = np.logical_and(detected_height, mid_high_tp_clouds)
     bias_mid_high_tp = np.where(detected_mid_high_tp, height_bias, np.nan)
     low_op_clouds = get_calipso_low_clouds_op(data['caliop_cflag'])
@@ -481,33 +502,44 @@ def do_ctth_validation(data, resampler, thrs=10):
     mae_average = resampler.get_average(mae)
     mae_average = np.where(n_matched_cases < thrs, np.nan, mae_average)
     bias_temperature_average = resampler.get_average(temperature_bias)
-    bias_temperature_average = np.where(n_matched_cases < thrs, np.nan, bias_temperature_average)
+    bias_temperature_average = np.where(n_matched_cases < thrs, np.nan,
+                                        bias_temperature_average)
 
     n_matched_cases_low = resampler.get_sum(detected_low.astype(int))
     bias_low_average = resampler.get_average(bias_low)
-    bias_low_average = np.where(n_matched_cases_low < thrs, np.nan, bias_low_average)
-    bias_temperature_low_average = resampler.get_average(bias_temperature_low)  # TEMPERATURE
-    bias_temperature_low_average = np.where(n_matched_cases_low < thrs, np.nan, bias_temperature_low_average)
+    bias_low_average = np.where(n_matched_cases_low < thrs,
+                                np.nan, bias_low_average)
+    bias_temperature_low_average = resampler.get_average(bias_temperature_low)
+    bias_temperature_low_average = np.where(n_matched_cases_low < thrs, np.nan,
+                                            bias_temperature_low_average)
     n_matched_cases_mid = resampler.get_sum(detected_mid.astype(int))
     bias_mid_average = resampler.get_average(bias_mid)
-    bias_mid_average = np.where(n_matched_cases_mid < thrs, np.nan, bias_mid_average)
+    bias_mid_average = np.where(n_matched_cases_mid < thrs, np.nan,
+                                bias_mid_average)
     n_matched_cases_high = resampler.get_sum(detected_high.astype(int))
     bias_high_average = resampler.get_average(bias_high)
-    bias_high_average = np.where(n_matched_cases_high < thrs, np.nan, bias_high_average)
+    bias_high_average = np.where(n_matched_cases_high < thrs, np.nan,
+                                 bias_high_average)
 
     # n_matched_cases_tp = resampler.get_sum(detected_tp.astype(int))
     # bias_tp_average = resampler.get_average(bias_tp)
-    # bias_tp_average = np.where(n_matched_cases_tp<thrs, np.nan, bias_tp_average)
+    # bias_tp_average = np.where(n_matched_cases_tp<thrs,
+    # np.nan, bias_tp_average)
     # n_matched_cases_op = resampler.get_sum(detected_op.astype(int))
     # bias_op_average = resampler.get_average(bias_op)
-    # bias_op_average = np.where(n_matched_cases_op<thrs, np.nan, bias_op_average)
+    # bias_op_average = np.where(n_matched_cases_op<thrs,
+    # np.nan, bias_op_average)
 
-    n_matched_cases_mid_high_tp = resampler.get_sum(detected_mid_high_tp.astype(int))
+    n_matched_cases_mid_high_tp = resampler.get_sum(
+                                        detected_mid_high_tp.astype(int)
+                                        )
     bias_mid_high_tp_average = resampler.get_average(bias_mid_high_tp)
-    bias_mid_high_tp_average = np.where(n_matched_cases_mid_high_tp < thrs, np.nan, bias_mid_high_tp_average)
+    bias_mid_high_tp_average = np.where(n_matched_cases_mid_high_tp < thrs,
+                                        np.nan, bias_mid_high_tp_average)
     n_matched_cases_low_op = resampler.get_sum(detected_low_op.astype(int))
     bias_low_op_average = resampler.get_average(bias_low_op)
-    bias_low_op_average = np.where(n_matched_cases_low_op < thrs, np.nan, bias_low_op_average)
+    bias_low_op_average = np.where(n_matched_cases_low_op < thrs,
+                                   np.nan, bias_low_op_average)
 
     # calculate scores
     scores = dict()
@@ -521,10 +553,12 @@ def do_ctth_validation(data, resampler, thrs=10):
     # scores['Bias opaque'] = [bias_op_average, -4000, 4000, 'bwr']
     # scores['Bias transparent'] = [bias_tp_average, -4000, 4000, 'bwr']
     scores['Bias low opaque'] = [bias_low_op_average, -2000, 2000, 'bwr']
-    scores['Bias mid+high transparent'] = [bias_mid_high_tp_average, -6000, 6000, 'bwr']
+    scores['Bias mid+high transparent'] = [bias_mid_high_tp_average,
+                                           -6000, 6000, 'bwr']
 
     scores['Bias temperature'] = [bias_temperature_average, -30, 30, 'bwr']
-    scores['Bias temperature low'] = [bias_temperature_low_average, -10, 10, 'bwr']
+    scores['Bias temperature low'] = [bias_temperature_low_average,
+                                      -10, 10, 'bwr']
 
     scores['CALIOP CTH mean'] = [cal_cth_average, 1000, 14000, 'rainbow']
     scores['SEVIRI CTH mean'] = [sev_cth_average, 1000, 14000, 'rainbow']
@@ -533,17 +567,22 @@ def do_ctth_validation(data, resampler, thrs=10):
     # addit_scores = do_ctp_validation(data, adef, out_size, idxs)
     # scores.update(addit_scores)
 
-    # scores['N_matched_cases_low'] = [N_matched_cases_low, None, None, 'rainbow']
-    # scores['N_matched_cases_middle'] = [N_matched_cases_mid, None, None, 'rainbow']
-    # scores['N_matched_cases_high'] = [N_matched_cases_high, None, None, 'rainbow']
+    # scores['N_matched_cases_low'] = [N_matched_cases_low,
+    # None, None, 'rainbow']
+    # scores['N_matched_cases_middle'] = [N_matched_cases_mid,
+    # None, None, 'rainbow']
+    # scores['N_matched_cases_high'] = [N_matched_cases_high,
+    # None, None, 'rainbow']
     return scores
 
 
 def do_ctp_validation(data, adef, out_size, idxs):
     """ Scores: low clouds detection """
     # detected ctth mask
-    detected_clouds = da.logical_and(data['caliop_cma'] == 1, data['imager_cma'] == 1)
-    detected_height = da.logical_and(detected_clouds, np.isfinite(data['imager_cth']))
+    detected_clouds = da.logical_and(data['caliop_cma'] == 1,
+                                     data['imager_cma'] == 1)
+    detected_height = da.logical_and(detected_clouds,
+                                     np.isfinite(data['imager_cth']))
     # find pps low and caliop low
     low_clouds_c = get_calipso_low_clouds(data['caliop_cflag'])
     detected_low_c = np.logical_and(detected_height, low_clouds_c)
@@ -573,7 +612,8 @@ def do_ctp_validation(data, adef, out_size, idxs):
     # n = a + b + c + d
     # n2d = N.reshape(adef.shape)
 
-    # scores = [hitrate(a, d, n).reshape(adef.shape), 0.7, 1, 'rainbow'] # hitrate low PPS
+    # scores = [hitrate(a, d, n).reshape(adef.shape),
+    # 0.7, 1, 'rainbow'] # hitrate low PPS
     pod_low = a / (a + c)
     far_low = c / (a + c)
     scores = dict()
@@ -601,7 +641,7 @@ def make_plot(scores, optf, crs, dnt, var, cosfield):
     fig = plt.figure(figsize=(16, 7))
     for cnt, s in enumerate(scores.keys()):
         values = scores[s]
-        values[0] = da.where(scores['Nobs'][0] < 50, np.nan, values[0])  # IS: thrs changed to 50
+        values[0] = da.where(scores['Nobs'][0] < 50, np.nan, values[0])
         ax = fig.add_subplot(4, 4, cnt + 1, projection=crs)
         ims = ax.imshow(values[0],
                         transform=crs,
@@ -682,7 +722,10 @@ def make_scatter(data, optf, dnt, dataset):
         y = y[~mask]
 
         ax = fig.add_subplot(1, 2, cnt + 1)
-        h = ax.hist2d(x, y, bins=(100, 100), cmap=plt.get_cmap('YlOrRd'), norm=LogNorm())
+        h = ax.hist2d(x, y,
+                      bins=(100, 100),
+                      cmap=plt.get_cmap('YlOrRd'),
+                      norm=LogNorm())
 
         # make linear regression
         reg = linregress(x, y)
@@ -710,7 +753,8 @@ def make_scatter(data, optf, dnt, dataset):
     print('SAVED ', os.path.basename(optf))
 
 
-def run(ipath, ifile, opath, dnts, satzs, year, month, dataset, chunksize=100000):
+def run(ipath, ifile, opath, dnts, satzs,
+        year, month, dataset, chunksize=100000):
     # if dnts is single string convert to list
     if isinstance(dnts, str):
         dnts = [dnts]
@@ -722,6 +766,11 @@ def run(ipath, ifile, opath, dnts, satzs, year, month, dataset, chunksize=100000
     if dataset not in ['CCI', 'CLAAS3']:
         raise Exception('Dataset {} not available!'.format(dataset))
 
+    ofile_cma = 'CMA_SEVIRI_CALIOP_{}{}_DNT-{}_SATZ-{}.png'
+    ofile_cph = 'CPH_SEVIRI_CALIOP_{}{}_DNT-{}_SATZ-{}.png'
+    ofile_ctth = 'CTTH_SEVIRI_CALIOP_{}{}_DNT-{}_SATZ-{}.png'
+    ofile_scat = 'SCATTER_SEVIRI_CALIOP_{}{}_DNT-{}_SATZ-{}.png'
+
     # iterate over satzen limitations
     for satz_lim in satzs:
 
@@ -730,8 +779,9 @@ def run(ipath, ifile, opath, dnts, satzs, year, month, dataset, chunksize=100000
             if isinstance(satz_lim, str):
                 try:
                     satz_lim = float(satz_lim)
-                except:
-                    raise Exception('Cannot convert {} to float'.format(satz_lim))
+                except ValueError:
+                    msg = 'Cannot convert {} to float'
+                    raise Exception(msg.format(satz_lim))
 
         for dnt in dnts:
 
@@ -740,15 +790,16 @@ def run(ipath, ifile, opath, dnts, satzs, year, month, dataset, chunksize=100000
                 raise Exception('DNT {} not recognized'.format(dnt))
 
             # set output filenames for CPH and CMA plot
-            ofile_cma = 'CMA_SEVIRI_CALIOP_{}{}_DNT-{}_SATZ-{}.png'.format(year, month, dnt, satz_lim)
-            ofile_cph = 'CPH_SEVIRI_CALIOP_{}{}_DNT-{}_SATZ-{}.png'.format(year, month, dnt, satz_lim)
-            ofile_ctth = 'CTTH_SEVIRI_CALIOP_{}{}_DNT-{}_SATZ-{}.png'.format(year, month, dnt, satz_lim)
-            ofile_scat = 'SCATTER_SEVIRI_CALIOP_{}{}_DNT-{}_SATZ-{}.png'.format(year, month, dnt, satz_lim)
+            ofile_cma = ofile_cma.format(year, month, dnt, satz_lim)
+            ofile_cph = ofile_cph.format(year, month, dnt, satz_lim)
+            ofile_ctth = ofile_ctth.format(year, month, dnt, satz_lim)
+            ofile_scat = ofile_scat.format(year, month, dnt, satz_lim)
 
             # get matchup data
-            data, latlon = get_collocated_file_info(os.path.join(ipath, ifile), chunksize, dnt, satz_lim, dataset)
+            data, latlon = get_collocated_file_info(os.path.join(ipath, ifile),
+                                                    chunksize, dnt, satz_lim,
+                                                    dataset)
 
-            # load area definition for plotting (pc_world=PlateCarree global; pc_MSG=PlateCarree lon [-90:90])
             adef = load_area('areas.yaml', 'pc_world')
 
             # for each input pixel get target pixel index
@@ -771,7 +822,10 @@ def run(ipath, ifile, opath, dnts, satzs, year, month, dataset, chunksize=100000
             cosfield = get_cosfield(lat)
 
             # do plotting
-            make_plot(cma_scores, os.path.join(opath, ofile_cma), crs, dnt, 'CMA', cosfield)
-            make_plot(cph_scores, os.path.join(opath, ofile_cph), crs, dnt, 'CPH', cosfield)
-            make_plot_CTTH(ctth_scores, os.path.join(opath, ofile_ctth), crs, dnt, 'CTTH', cosfield)
+            make_plot(cma_scores, os.path.join(opath, ofile_cma), crs,
+                      dnt, 'CMA', cosfield)
+            make_plot(cph_scores, os.path.join(opath, ofile_cph), crs,
+                      dnt, 'CPH', cosfield)
+            make_plot_CTTH(ctth_scores, os.path.join(opath, ofile_ctth),
+                           crs, dnt, 'CTTH', cosfield)
             make_scatter(data, os.path.join(opath, ofile_scat), dnt, dataset)
