@@ -1,2 +1,2 @@
 # atrain_plot
-Plot atrain_match results
+Plot https://github.com/fuoa-pps/atrain_match results on spatial maps
