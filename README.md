@@ -12,10 +12,14 @@ ifile='matchup_filename.h5'
 opath='/path/where/figs/should/be/saved'
 
 dnts = [ 'ALL', 'DAY', 'NIGHT', 'TWILIGHT' ]
+
 satzs = [None, 70]
+
 year = '2019'
+
 month = '07'
+
 dataset 'CCI' #CLAAS3
 
- run(ipath, ifile, opath, dnts, satzs, year, month, dataset)
+run(ipath, ifile, opath, dnts, satzs, year, month, dataset)
 ###
