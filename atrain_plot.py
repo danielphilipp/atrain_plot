@@ -146,6 +146,7 @@ def do_cma_cph_validation(data, adef, out_size, idxs, variable):
     scu = ScoreUtils(a, b, c, d)
 
     scores = dict()
+    # [scores_on_target_grid, vmin, vmax, cmap]
     scores['Hitrate'] = [scu.hitrate().reshape(adef.shape),
                          0.5, 1, 'rainbow']
     scores['PODclr'] = [scu.pod_0().reshape(adef.shape),
@@ -276,6 +277,7 @@ def do_ctth_validation(data, resampler, thrs=10):
 
     # calculate scores
     scores = dict()
+    # [scores_on_target_grid, vmin, vmax, cmap]
     scores['Bias CTH'] = [bias_average, -4000, 4000, 'bwr']
     scores['MAE CTH'] = [mae_average, 0, 2500, 'Reds']
 
