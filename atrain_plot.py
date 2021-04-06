@@ -500,10 +500,10 @@ def run(ipath, ifile, opath, dnts, satzs,
     if dataset not in ['CCI', 'CLAAS3']:
         raise Exception('Dataset {} not available!'.format(dataset))
 
-    ofile_cma = 'CMA_SEVIRI_CALIOP_{}{}_DNT-{}_SATZ-{}.png'
-    ofile_cph = 'CPH_SEVIRI_CALIOP_{}{}_DNT-{}_SATZ-{}.png'
-    ofile_ctth = 'CTTH_SEVIRI_CALIOP_{}{}_DNT-{}_SATZ-{}.png'
-    ofile_scat = 'SCATTER_SEVIRI_CALIOP_{}{}_DNT-{}_SATZ-{}.png'
+    ofile_cma = 'CMA{}_CALIOP_{}{}_DNT-{}_SATZ-{}.png'
+    ofile_cph = 'CPH_{}_CALIOP_{}{}_DNT-{}_SATZ-{}.png'
+    ofile_ctth = 'CTTH_{}_CALIOP_{}{}_DNT-{}_SATZ-{}.png'
+    ofile_scat = 'SCATTER_{}_CALIOP_{}{}_DNT-{}_SATZ-{}.png'
 
     # iterate over satzen limitations
     for satz_lim in satzs:
@@ -524,10 +524,10 @@ def run(ipath, ifile, opath, dnts, satzs,
                 raise Exception('DNT {} not recognized'.format(dnt))
 
             # set output filenames for CPH and CMA plot
-            ofile_cma = ofile_cma.format(year, month, dnt, satz_lim)
-            ofile_cph = ofile_cph.format(year, month, dnt, satz_lim)
-            ofile_ctth = ofile_ctth.format(year, month, dnt, satz_lim)
-            ofile_scat = ofile_scat.format(year, month, dnt, satz_lim)
+            ofile_cma = ofile_cma.format(dataset, year, month, dnt, satz_lim)
+            ofile_cph = ofile_cph.format(dataset, year, month, dnt, satz_lim)
+            ofile_ctth = ofile_ctth.format(dataset, year, month, dnt, satz_lim)
+            ofile_scat = ofile_scat.format(dataset, year, month, dnt, satz_lim)
 
             # get matchup data
             data, latlon = get_matchup_file_content(os.path.join(ipath, ifile),
