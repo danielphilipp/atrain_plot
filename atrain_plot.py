@@ -7,168 +7,11 @@ import xarray as xr
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
-from atrain_match.utils import validate_cph_util as vcu
-from atrain_match.utils.get_flag_info import get_calipso_clouds_of_type_i_feature_classification_flags_one_layer as get_cal_flag
 from scores import ScoreUtils
-
+import get_imager as gi
+import get_caliop as gc
 
 matplotlib.use('Agg')
-
-# --------------------------- CTTH ------------------------------------------
-def get_caliop_cth(ds):
-    cth = np.array(ds['layer_top_altitude'])[:, 0]
-    elev = np.array(ds['elevation'])
-    # set FillValue to NaN, convert to m
-    cth = np.where(cth == -9999, np.nan, cth * 1000.)
-    # compute height above surface
-    cth_surf = cth - elev
-    return cth_surf
-
-
-def get_caliop_ctt(ds):
-    ctt = np.array(ds['midlayer_temperature'])[:, 0]
-    ctt = np.where(ctt == -9999, np.nan, ctt + 273.15)
-    ctt = np.where(ctt < 0, np.nan, ctt)
-    return ctt
-
-
-def get_imager_cth(ds):
-    alti = np.array(ds['ctth_height'])
-    # set FillValue to NaN
-    alti = np.where(alti < 0, np.nan, alti)
-    # alti = np.where(alti>45000, np.nan, alti)
-    return alti
-
-
-def get_imager_ctt(ds):
-    tempe = np.array(ds['ctth_temperature'])
-    tempe = np.where(tempe < 0, np.nan, tempe)
-    return tempe
-
-
-def get_calipso_clouds_of_type_i(cflag, calipso_cloudtype=0):
-    """Get CALIPSO clouds of type i from top layer."""
-    # bits 10-12, start at 1 counting
-    return get_cal_flag(cflag, calipso_cloudtype=calipso_cloudtype)
-
-
-def get_calipso_low_clouds(cfalg):
-    """Get CALIPSO low clouds."""
-    # type 0, 1, 2, 3 are low cloudtypes
-    calipso_low = np.logical_or(
-        np.logical_or(
-            get_calipso_clouds_of_type_i(cfalg, calipso_cloudtype=0),
-            get_calipso_clouds_of_type_i(cfalg, calipso_cloudtype=1)),
-        np.logical_or(
-            get_calipso_clouds_of_type_i(cfalg, calipso_cloudtype=2),
-            get_calipso_clouds_of_type_i(cfalg, calipso_cloudtype=3)))
-    return calipso_low
-
-
-def get_calipso_medium_clouds(cfalg):
-    """Get CALIPSO medium clouds."""
-    # type 4,5 are mid-level cloudtypes (Ac, As)
-    calipso_high = np.logical_or(
-        get_calipso_clouds_of_type_i(cfalg, calipso_cloudtype=4),
-        get_calipso_clouds_of_type_i(cfalg, calipso_cloudtype=5))
-    return calipso_high
-
-
-def get_calipso_high_clouds(cfalg):
-    """Get CALIPSO high clouds."""
-    # type 6, 7 are high cloudtypes
-    calipso_high = np.logical_or(
-        get_calipso_clouds_of_type_i(cfalg, calipso_cloudtype=6),
-        get_calipso_clouds_of_type_i(cfalg, calipso_cloudtype=7))
-    return calipso_high
-
-
-def get_calipso_op(cfalg):
-    """Get CALIPSO opaque clouds."""
-    # type 1, 2, 5, 7 are opaque cloudtypes
-    calipso_low = np.logical_or(
-        np.logical_or(
-            get_calipso_clouds_of_type_i(cfalg, calipso_cloudtype=1),
-            get_calipso_clouds_of_type_i(cfalg, calipso_cloudtype=2)),
-        np.logical_or(
-            get_calipso_clouds_of_type_i(cfalg, calipso_cloudtype=5),
-            get_calipso_clouds_of_type_i(cfalg, calipso_cloudtype=7)))
-    return calipso_low
-
-
-def get_calipso_tp(cfalg):
-    """Get CALIPSO semi-transparent clouds."""
-    # type 0,3,4,6 transparent/broken
-    calipso_low = np.logical_or(
-        np.logical_or(
-            get_calipso_clouds_of_type_i(cfalg, calipso_cloudtype=0),
-            get_calipso_clouds_of_type_i(cfalg, calipso_cloudtype=3)),
-        np.logical_or(
-            get_calipso_clouds_of_type_i(cfalg, calipso_cloudtype=4),
-            get_calipso_clouds_of_type_i(cfalg, calipso_cloudtype=6)))
-    return calipso_low
-
-
-def get_calipso_low_clouds_op(match_calipso):
-    """Get CALIPSO low and opaque clouds."""
-    # type 0, 1, 2, 3 are low cloudtypes
-    calipso_low = np.logical_or(
-        get_calipso_clouds_of_type_i(match_calipso, calipso_cloudtype=1),
-        get_calipso_clouds_of_type_i(match_calipso, calipso_cloudtype=2))
-    return calipso_low
-
-
-def get_calipso_medium_and_high_clouds_tp(match_calipso):
-    """Get CALIPSO medium transparent and high transparent clouds."""
-    # type 0, 1, 2, 3 are low cloudtypes
-    calipso_transp = np.logical_or(
-        get_calipso_clouds_of_type_i(match_calipso, calipso_cloudtype=4),
-        get_calipso_clouds_of_type_i(match_calipso, calipso_cloudtype=6))
-    return calipso_transp
-
-
-def get_caliop_cph(ds):
-    """
-    CALIPSO_PHASE_VALUES:   unknown=0,
-                            ice=1,
-                            water=2,
-    """
-    phase = vcu.get_calipso_phase_inner(ds['feature_classification_flags'],
-                                        max_layers=10,
-                                        same_phase_in_top_three_lay=True)
-    mask = phase.mask
-    phase = np.array(phase)
-    phase = np.where(phase == 0, np.nan, phase)
-    phase = np.where(phase == 2, 0, phase)
-    phase = np.where(np.logical_or(phase == 1, phase == 3), 1, phase)
-
-    phase = np.where(mask, np.nan, phase)
-    return phase
-
-
-def get_imager_cph(ds):
-    phase = np.array(ds['cpp_phase'])
-    phase = np.where(phase < 0, np.nan, phase)
-    phase = np.where(phase > 10, np.nan, phase)
-    phase = np.where(phase == 0, np.nan, phase)
-    phase = np.where(phase == 1, 0, phase)
-    phase = np.where(phase == 2, 1, phase)
-
-    return phase
-
-
-def get_caliop_cma(ds):
-    cfrac_limit = 0.5
-    caliop_cma = np.array(ds['cloud_fraction']) > cfrac_limit
-    return caliop_cma.astype(bool)
-
-
-def get_imager_cma(ds):
-    data = np.array(ds['cloudmask'])
-    binary = np.where(data == 0, 0, 1)
-    binary = np.where(data < 0, np.nan, binary)
-
-    return binary.astype(bool)
 
 
 def get_collocated_file_info(ipath, chunksize, dnt='ALL',
@@ -184,10 +27,10 @@ def get_collocated_file_info(ipath, chunksize, dnt='ALL',
         raise Exception('Dataset {} not known!'.format(dataset))
 
     # get CTH and CTT
-    sev_cth = da.from_array(get_imager_cth(imager), chunks=chunksize)
-    cal_cth = da.from_array(get_caliop_cth(caliop), chunks=chunksize)
-    sev_ctt = da.from_array(get_imager_ctt(imager), chunks=chunksize)
-    cal_ctt = da.from_array(get_caliop_ctt(caliop), chunks=chunksize)
+    sev_cth = da.from_array(gi.get_imager_cth(imager), chunks=chunksize)
+    cal_cth = da.from_array(gc.get_caliop_cth(caliop), chunks=chunksize)
+    sev_ctt = da.from_array(gi.get_imager_ctt(imager), chunks=chunksize)
+    cal_ctt = da.from_array(gc.get_caliop_ctt(caliop), chunks=chunksize)
     cal_cflag = np.array(caliop['feature_classification_flags'][::, 0])
 
     # ctp_c = np.array(caliop['layer_top_pressure'])[:,0]
@@ -198,10 +41,10 @@ def get_collocated_file_info(ipath, chunksize, dnt='ALL',
     # cal_ctp = da.from_array(ctp_c, chunks=(chunksize))
 
     # get CMA, CPH, VZA, SZA, LAT and LON
-    sev_cph = da.from_array(get_imager_cph(imager), chunks=chunksize)
-    cal_cph = da.from_array(get_caliop_cph(caliop), chunks=chunksize)
-    cal_cma = da.from_array(get_caliop_cma(caliop), chunks=chunksize)
-    sev_cma = da.from_array(get_imager_cma(imager), chunks=chunksize)
+    sev_cph = da.from_array(gi.get_imager_cph(imager), chunks=chunksize)
+    cal_cph = da.from_array(gc.get_caliop_cph(caliop), chunks=chunksize)
+    cal_cma = da.from_array(gc.get_caliop_cma(caliop), chunks=chunksize)
+    sev_cma = da.from_array(gi.get_imager_cma(imager), chunks=chunksize)
     satz = da.from_array(imager['satz'], chunks=chunksize)
     sunz = da.from_array(imager['sunz'], chunks=chunksize)
     lat = da.from_array(imager['latitude'], chunks=chunksize)
@@ -336,8 +179,6 @@ def do_cma_cph_validation(data, adef, out_size, idxs, variable):
     return scores
 
 
-
-
 def do_ctth_validation(data, resampler, thrs=10):
     """ thrs: threshold value for filtering boxes with small number of obs """
     # mask of detected ctth
@@ -357,30 +198,30 @@ def do_ctth_validation(data, resampler, thrs=10):
     temperature_bias = np.where(detected_temperature, delta_t, np.nan)
 
     # clouds levels (from calipso 'cloud type')
-    low_clouds = get_calipso_low_clouds(data['caliop_cflag'])
+    low_clouds = gc.get_calipso_low_clouds(data['caliop_cflag'])
     detected_low = np.logical_and(detected_height, low_clouds)
     bias_low = np.where(detected_low, height_bias, np.nan)
     bias_temperature_low = np.where(detected_low, temperature_bias, np.nan)
-    mid_clouds = get_calipso_medium_clouds(data['caliop_cflag'])
+    mid_clouds = gc.get_calipso_medium_clouds(data['caliop_cflag'])
     detected_mid = np.logical_and(detected_height, mid_clouds)
     bias_mid = np.where(detected_mid, height_bias, np.nan)
-    high_clouds = get_calipso_high_clouds(data['caliop_cflag'])
+    high_clouds = gc.get_calipso_high_clouds(data['caliop_cflag'])
     detected_high = np.logical_and(detected_height, high_clouds)
     bias_high = np.where(detected_high, height_bias, np.nan)
     # opaque/transparent clouds (from calipso 'cloud type')
-    # tp_clouds = get_calipso_tp(data['caliop_cflag'])
+    # tp_clouds = gc.get_calipso_tp(data['caliop_cflag'])
     # detected_tp = np.logical_and(detected_height,tp_clouds)
     # bias_tp = np.where(detected_tp, height_bias, np.nan)
-    # op_clouds = get_calipso_op(data['caliop_cflag'])
+    # op_clouds = gc.get_calipso_op(data['caliop_cflag'])
     # detected_op = np.logical_and(detected_height,op_clouds)
     # bias_op = np.where(detected_op, height_bias, np.nan)
     # low+opaque, mid/high+transparent
-    mid_high_tp_clouds = get_calipso_medium_and_high_clouds_tp(
+    mid_high_tp_clouds = gc.get_calipso_medium_and_high_clouds_tp(
                                                 data['caliop_cflag']
                                                 )
     detected_mid_high_tp = np.logical_and(detected_height, mid_high_tp_clouds)
     bias_mid_high_tp = np.where(detected_mid_high_tp, height_bias, np.nan)
-    low_op_clouds = get_calipso_low_clouds_op(data['caliop_cflag'])
+    low_op_clouds = gc.get_calipso_low_clouds_op(data['caliop_cflag'])
     detected_low_op = np.logical_and(detected_height, low_op_clouds)
     bias_low_op = np.where(detected_low_op, height_bias, np.nan)
 
