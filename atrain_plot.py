@@ -14,7 +14,7 @@ import get_caliop as gc
 matplotlib.use('Agg')
 
 
-def get_collocated_file_info(ipath, chunksize, dnt='ALL',
+def get_matchup_file_content(ipath, chunksize, dnt='ALL',
                              satz_lim=None, dataset='CCI'):
     file = h5py.File(ipath, 'r')
     caliop = file['calipso']
@@ -530,7 +530,7 @@ def run(ipath, ifile, opath, dnts, satzs,
             ofile_scat = ofile_scat.format(year, month, dnt, satz_lim)
 
             # get matchup data
-            data, latlon = get_collocated_file_info(os.path.join(ipath, ifile),
+            data, latlon = get_matchup_file_content(os.path.join(ipath, ifile),
                                                     chunksize, dnt, satz_lim,
                                                     dataset)
 
