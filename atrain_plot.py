@@ -9,8 +9,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 from atrain_match.utils import validate_cph_util as vcu
 from atrain_match.utils.get_flag_info import get_calipso_clouds_of_type_i_feature_classification_flags_one_layer as get_cal_flag
-from scores import (hitrate, pod_clr, pod_cld, far_clr, far_cld, pofd_clr,
-                    pofd_cld, heidke, kuiper, bias, mean)
+from scores import ScoreUtils
 
 
 matplotlib.use('Agg')
@@ -275,126 +274,68 @@ def get_collocated_file_info(ipath, chunksize, dnt='ALL',
     return data, latlon
 
 
-def do_cma_validation(data, adef, out_size, idxs):
-    cal_cma = data['caliop_cma']
-    img_cma = data['imager_cma']
+def do_cma_cph_validation(data, adef, out_size, idxs, variable):
+    if variable.lower() == 'cma':
+        cal = data['caliop_cma']
+        img = data['imager_cma']
+    elif variable.lower() == 'cph':
+        cal = data['caliop_cph']
+        img = data['imager_cph']
+    else:
+        msg = 'Variable {} for CMA/CPH validation unknown. [cma, cph]'
+        raise Exception(msg.format(variable))
 
     # pattern: CALIOP_SEVIRI
-    cld_cld_a = da.logical_and(cal_cma == 1, img_cma == 1)
-    clr_cld_b = da.logical_and(cal_cma == 0, img_cma == 1)
-    cld_clr_c = da.logical_and(cal_cma == 1, img_cma == 0)
-    clr_clr_d = da.logical_and(cal_cma == 0, img_cma == 0)
-
-    cld_cld_a = cld_cld_a.astype(np.int64)
-    clr_cld_b = clr_cld_b.astype(np.int64)
-    cld_clr_c = cld_clr_c.astype(np.int64)
-    clr_clr_d = clr_clr_d.astype(np.int64)
+    a11 = da.logical_and(cal == 1, img == 1).astype(np.int64)
+    b01 = da.logical_and(cal == 0, img == 1).astype(np.int64)
+    c10 = da.logical_and(cal == 1, img == 0).astype(np.int64)
+    d00 = da.logical_and(cal == 0, img == 0).astype(np.int64)
 
     a, _ = da.histogram(idxs, bins=out_size, range=(0, out_size),
-                        weights=cld_cld_a, density=False)
+                        weights=a11, density=False)
     b, _ = da.histogram(idxs, bins=out_size, range=(0, out_size),
-                        weights=clr_cld_b, density=False)
+                        weights=b01, density=False)
     c, _ = da.histogram(idxs, bins=out_size, range=(0, out_size),
-                        weights=cld_clr_c, density=False)
+                        weights=c10, density=False)
     d, _ = da.histogram(idxs, bins=out_size, range=(0, out_size),
-                        weights=clr_clr_d, density=False)
+                        weights=d00, density=False)
 
-    n = a + b + c + d
-    n2d = n.reshape(adef.shape)
+    scu = ScoreUtils(a, b, c, d)
 
     scores = dict()
-    scores['Hitrate'] = [hitrate(a, d, n).reshape(adef.shape),
+    scores['Hitrate'] = [scu.hitrate().reshape(adef.shape),
                          0.5, 1, 'rainbow']
-    scores['PODclr'] = [pod_clr(b, d).reshape(adef.shape),
+    scores['PODclr'] = [scu.pod_0().reshape(adef.shape),
                         0.5, 1, 'rainbow']
-    scores['PODcld'] = [pod_cld(a, c).reshape(adef.shape),
+    scores['PODcld'] = [scu.pod_1().reshape(adef.shape),
                         0.5, 1, 'rainbow']
-    scores['FARclr'] = [far_clr(c, d).reshape(adef.shape),
+    scores['FARclr'] = [scu.far_0().reshape(adef.shape),
                         0, 1, 'rainbow']
-    scores['FARcld'] = [far_cld(a, b).reshape(adef.shape),
+    scores['FARcld'] = [scu.far_1().reshape(adef.shape),
                         0, 1, 'rainbow']
-    scores['POFDclr'] = [pofd_clr(a, c).reshape(adef.shape),
+    scores['POFDclr'] = [scu.pofd_0().reshape(adef.shape),
                          0, 1, 'rainbow']
-    scores['POFDcld'] = [pofd_cld(b, d).reshape(adef.shape),
+    scores['POFDcld'] = [scu.pofd_1().reshape(adef.shape),
                          0, 1, 'rainbow']
-    scores['Heidke'] = [heidke(a, b, c, d).reshape(adef.shape),
+    scores['Heidke'] = [scu.heidke().reshape(adef.shape),
                         0, 1, 'rainbow']
-    scores['Kuiper'] = [kuiper(a, b, c, d).reshape(adef.shape),
+    scores['Kuiper'] = [scu.kuiper().reshape(adef.shape),
                         0, 1, 'rainbow']
-    scores['Bias'] = [bias(b, c, n).reshape(adef.shape),
+    scores['Bias'] = [scu.bias().reshape(adef.shape),
                       0, 1, 'bwr']
-    scores['CALIOP mean'] = [mean(a, c, n).reshape(adef.shape),
+    scores['CALIOP mean'] = [scu.mean().reshape(adef.shape),
                              None, None, 'rainbow']
-    scores['SEVIRI mean'] = [mean(a, b, n).reshape(adef.shape),
+    scores['SEVIRI mean'] = [scu.mean().reshape(adef.shape),
                              None, None, 'rainbow']
-    scores['Nobs'] = [n2d, None, None, 'rainbow']
+    scores['Nobs'] = [scu.n.reshape(adef.shape),
+                      None, None, 'rainbow']
 
+    # calculate bias limits for plotting
     scores['Bias'][2] = np.nanmax(np.abs(scores['Bias'][0])) / 2
     scores['Bias'][1] = scores['Bias'][2] * (-1)
     return scores
 
 
-def do_cph_validation(data, adef, out_size, idxs):
-    cal_cph = data['caliop_cph']
-    img_cph = data['imager_cph']
-
-    # pattern: CALIOP_SEVIRI
-    # get counts for contigency table
-    ice_ice_a = da.logical_and(cal_cph == 1, img_cph == 1)
-    liq_ice_b = da.logical_and(cal_cph == 0, img_cph == 1)
-    ice_liq_c = da.logical_and(cal_cph == 1, img_cph == 0)
-    liq_liq_d = da.logical_and(cal_cph == 0, img_cph == 0)
-    ice_ice_a = ice_ice_a.astype(np.int64)
-    liq_ice_b = liq_ice_b.astype(np.int64)
-    ice_liq_c = ice_liq_c.astype(np.int64)
-    liq_liq_d = liq_liq_d.astype(np.int64)
-
-    # use histogram functionality to get contigency table summed up for every
-    # grid box in target grid
-    a, _ = da.histogram(idxs, bins=out_size, range=(0, out_size),
-                        weights=ice_ice_a, density=False)
-    b, _ = da.histogram(idxs, bins=out_size, range=(0, out_size),
-                        weights=liq_ice_b, density=False)
-    c, _ = da.histogram(idxs, bins=out_size, range=(0, out_size),
-                        weights=ice_liq_c, density=False)
-    d, _ = da.histogram(idxs, bins=out_size, range=(0, out_size),
-                        weights=liq_liq_d, density=False)
-
-    n = a + b + c + d
-    n2d = n.reshape(adef.shape)
-
-    # calculate scores
-    scores = dict()
-    scores['Hitrate'] = [hitrate(a, d, n).reshape(adef.shape),
-                         0.5, 1, 'rainbow']
-    scores['PODliq'] = [pod_clr(b, d).reshape(adef.shape),
-                        0.5, 1, 'rainbow']
-    scores['PODice'] = [pod_cld(a, c).reshape(adef.shape),
-                        0.5, 1, 'rainbow']
-    scores['FARliq'] = [far_clr(c, d).reshape(adef.shape),
-                        0, 1, 'rainbow']
-    scores['FARice'] = [far_cld(a, b).reshape(adef.shape),
-                        0, 1, 'rainbow']
-    scores['POFDliq'] = [pofd_clr(a, c).reshape(adef.shape),
-                         0, 1, 'rainbow']
-    scores['POFDice'] = [pofd_cld(b, d).reshape(adef.shape),
-                         0, 1, 'rainbow']
-    scores['Heidke'] = [heidke(a, b, c, d).reshape(adef.shape),
-                        0, 1, 'rainbow']
-    scores['Kuiper'] = [kuiper(a, b, c, d).reshape(adef.shape),
-                        0, 1, 'rainbow']
-    scores['Bias'] = [bias(b, c, n).reshape(adef.shape),
-                      0, 1, 'bwr']
-    scores['CALIOP mean'] = [mean(a, c, n).reshape(adef.shape),
-                             None, None, 'rainbow']
-    scores['SEVIRI mean'] = [mean(a, b, n).reshape(adef.shape),
-                             None, None, 'rainbow']
-    scores['Nobs'] = [n2d, None, None, 'rainbow']
-
-    scores['Bias'][2] = np.nanmax(np.abs(scores['Bias'][0])) / 2
-    scores['Bias'][1] = scores['Bias'][2] * (-1)
-
-    return scores
 
 
 def do_ctth_validation(data, resampler, thrs=10):
@@ -705,7 +646,8 @@ def make_scatter(data, optf, dnt, dataset):
 
 
 def run(ipath, ifile, opath, dnts, satzs,
-        year, month, dataset, chunksize=100000):
+        year, month, dataset, chunksize=100000,
+        plot_area='pc_world'):
     # if dnts is single string convert to list
     if isinstance(dnts, str):
         dnts = [dnts]
@@ -751,7 +693,10 @@ def run(ipath, ifile, opath, dnts, satzs,
                                                     chunksize, dnt, satz_lim,
                                                     dataset)
 
-            adef = load_area('areas.yaml', 'pc_world')
+            # define plotting area
+            module_path = os.path.dirname(__file__)
+            adef = load_area(os.path.join(module_path, 'areas.yaml'),
+                             plot_area)
 
             # for each input pixel get target pixel index
             resampler = BucketResampler(adef, latlon['lon'], latlon['lat'])
@@ -762,8 +707,10 @@ def run(ipath, ifile, opath, dnts, satzs,
             lon, lat = adef.get_lonlats()
 
             # do validation
-            cma_scores = do_cma_validation(data, adef, out_size, idxs)
-            cph_scores = do_cph_validation(data, adef, out_size, idxs)
+            cma_scores = do_cma_cph_validation(data, adef, out_size,
+                                               idxs, 'cma')
+            cph_scores = do_cma_cph_validation(data, adef, out_size,
+                                               idxs, 'cph')
             ctth_scores = do_ctth_validation(data, resampler, thrs=10)
 
             # get crs for plotting
