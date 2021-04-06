@@ -500,7 +500,7 @@ def run(ipath, ifile, opath, dnts, satzs,
     if dataset not in ['CCI', 'CLAAS3']:
         raise Exception('Dataset {} not available!'.format(dataset))
 
-    ofile_cma = 'CMA{}_CALIOP_{}{}_DNT-{}_SATZ-{}.png'
+    ofile_cma = 'CMA_{}_CALIOP_{}{}_DNT-{}_SATZ-{}.png'
     ofile_cph = 'CPH_{}_CALIOP_{}{}_DNT-{}_SATZ-{}.png'
     ofile_ctth = 'CTTH_{}_CALIOP_{}{}_DNT-{}_SATZ-{}.png'
     ofile_scat = 'SCATTER_{}_CALIOP_{}{}_DNT-{}_SATZ-{}.png'
