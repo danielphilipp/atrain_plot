@@ -1,6 +1,7 @@
 """ Module containing functions to calculate various scores """
 import numpy as np
 
+
 class ScoreUtils:
     def __init__(self, a, b, c, d, num=None):
 

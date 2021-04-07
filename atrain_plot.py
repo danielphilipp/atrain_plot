@@ -1,3 +1,15 @@
+"""
+Main module for plotting validation scores from atrain_match matchups on
+spatial maps by calculating scores for each target gridbox. Uses bucket
+resampling method.
+
+atrain_match: https://github.com/foua-pps/atrain_match
+
+Authors:
+Daniel Philipp (DWD)
+Irina Solodovnik (DWD)
+"""
+
 from pyresample import load_area
 from pyresample.bucket import BucketResampler
 import h5py
@@ -16,6 +28,8 @@ matplotlib.use('Agg')
 
 def get_matchup_file_content(ipath, chunksize, dnt='ALL',
                              satz_lim=None, dataset='CCI'):
+    """ Obtain variables from atrain_match HDF5 matchup file. """
+
     file = h5py.File(ipath, 'r')
     caliop = file['calipso']
 
@@ -118,6 +132,8 @@ def get_matchup_file_content(ipath, chunksize, dnt='ALL',
 
 
 def do_cma_cph_validation(data, adef, out_size, idxs, variable):
+    """ Calculate scores for CMA or CPH depending on variable arg. """
+
     if variable.lower() == 'cma':
         cal = data['caliop_cma']
         img = data['imager_cma']
@@ -181,7 +197,11 @@ def do_cma_cph_validation(data, adef, out_size, idxs, variable):
 
 
 def do_ctth_validation(data, resampler, thrs=10):
-    """ thrs: threshold value for filtering boxes with small number of obs """
+    """
+    Calculate CTH and CTT bias. thrs: threshold value for filtering
+    boxes with small number of obs.
+    """
+
     # mask of detected ctth
     detected_clouds = da.logical_and(data['caliop_cma'] == 1,
                                      data['imager_cma'] == 1)
@@ -312,7 +332,8 @@ def do_ctth_validation(data, resampler, thrs=10):
 
 
 def do_ctp_validation(data, adef, out_size, idxs):
-    """ Scores: low clouds detection """
+    """ Calculate CTP validation (NOT AVAILABLE YET). """
+
     # detected ctth mask
     detected_clouds = da.logical_and(data['caliop_cma'] == 1,
                                      data['imager_cma'] == 1)
@@ -359,12 +380,16 @@ def do_ctp_validation(data, adef, out_size, idxs):
 
 
 def get_cosfield(lat):
+    """ Calculate 2D cos(lat) field for weighted averaging on regular grid."""
+
     latcos = np.abs(np.cos(lat * np.pi / 180))
     cosfield = da.from_array(latcos, chunks=(1000, 1000))  # [mask]
     return cosfield
 
 
 def weighted_spatial_average(data, cosfield):
+    """ Calculate weighted spatial average. """
+
     if isinstance(data, xr.DataArray):
         data = data.data
     if isinstance(data, np.ndarray):
@@ -373,6 +398,8 @@ def weighted_spatial_average(data, cosfield):
 
 
 def make_plot(scores, optf, crs, dnt, var, cosfield):
+    """ Plot CMA/CPH scores. """
+
     fig = plt.figure(figsize=(16, 7))
     for cnt, s in enumerate(scores.keys()):
         values = scores[s]
@@ -399,6 +426,7 @@ def make_plot(scores, optf, crs, dnt, var, cosfield):
 
 
 def make_plot_CTTH(scores, optf, crs, dnt, var, cosfield):
+    """ Plot CTH/CTT biases. """
     fig = plt.figure(figsize=(16, 12))
     for cnt, s in enumerate(scores.keys()):
         values = scores[s]
@@ -428,6 +456,8 @@ def make_plot_CTTH(scores, optf, crs, dnt, var, cosfield):
 
 
 def make_scatter(data, optf, dnt, dataset):
+    """ Plot CTH/CTT scatter plots. """
+
     from scipy.stats import linregress
     from matplotlib.colors import LogNorm
 
@@ -491,6 +521,23 @@ def make_scatter(data, optf, dnt, dataset):
 def run(ipath, ifile, opath, dnts, satzs,
         year, month, dataset, chunksize=100000,
         plot_area='pc_world'):
+    """
+    Main function to be called in external script to run atrain_plot.
+
+    ipath (str):     Path to HDF5 atrain_match matchup file.
+    ifile (str):     HDF5 atrain_match matchup file filename.
+    opath (str):     Path where figures should be saved.
+    dnts (list):     List of illumination scenarios to be processed.
+                     Available: ALL, DAY, NIGHT, TWILIGHT
+    satzs (list):    List of satellite zenith limitations to be processed. Use
+                     [None] if no limitation required.
+    year (str):      String of year.
+    month (str):     String of month.
+    dataset (str):   Dataset validated: Available: CCI, CLAAS3.
+    chunksize (int): Size of data chunks to reduce memory usage.
+    plot_area (str): Name of area definition in areas.yaml file to be used.
+    """
+
     # if dnts is single string convert to list
     if isinstance(dnts, str):
         dnts = [dnts]
