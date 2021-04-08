@@ -19,12 +19,17 @@ import xarray as xr
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
+from collections import OrderedDict
 from scores import ScoreUtils
 import get_imager as gi
 import get_caliop as gc
 
 matplotlib.use('Agg')
 
+def change_key(self, old, new):
+    for _ in range(len(self)):
+        k, v = self.popitem(False)
+        self[new if old == k else k] = v
 
 def get_matchup_file_content(ipath, chunksize, dnt='ALL',
                              satz_lim=None, dataset='CCI'):
@@ -63,6 +68,9 @@ def get_matchup_file_content(ipath, chunksize, dnt='ALL',
     sunz = da.from_array(imager['sunz'], chunks=chunksize)
     lat = da.from_array(imager['latitude'], chunks=chunksize)
     lon = da.from_array(imager['longitude'], chunks=chunksize)
+    # mask fill values for angles
+    satz = np.where(satz==-9, np.nan, satz)
+    sunz = np.where(sunz==-9, np.nan, sunz)
 
     # mask satellize zenith angle
     if satz_lim is not None:
@@ -133,7 +141,9 @@ def get_matchup_file_content(ipath, chunksize, dnt='ALL',
 
 def do_cma_cph_validation(data, adef, out_size, idxs, variable):
     """ Calculate scores for CMA or CPH depending on variable arg. """
-
+    
+    # !!! for CPH '0' is water, '1' is ice !!!
+    
     if variable.lower() == 'cma':
         cal = data['caliop_cma']
         img = data['imager_cma']
@@ -167,16 +177,22 @@ def do_cma_cph_validation(data, adef, out_size, idxs, variable):
                          0.5, 1, 'rainbow']
     scores['PODclr'] = [scu.pod_0().reshape(adef.shape),
                         0.5, 1, 'rainbow']
+    if variable.lower() == 'cph' : scores['PODwater'] = scores.pop('PODclr')
     scores['PODcld'] = [scu.pod_1().reshape(adef.shape),
                         0.5, 1, 'rainbow']
+    if variable.lower() == 'cph': scores['PODice'] = scores.pop('PODcld')
     scores['FARclr'] = [scu.far_0().reshape(adef.shape),
                         0, 1, 'rainbow']
+    if variable.lower() == 'cph': scores['FARwater'] = scores.pop('FARclr')
     scores['FARcld'] = [scu.far_1().reshape(adef.shape),
                         0, 1, 'rainbow']
+    if variable.lower() == 'cph': scores['FARice'] = scores.pop('FARcld')
     scores['POFDclr'] = [scu.pofd_0().reshape(adef.shape),
                          0, 1, 'rainbow']
+    if variable.lower() == 'cph': scores['POFDwater'] = scores.pop('POFDclr')
     scores['POFDcld'] = [scu.pofd_1().reshape(adef.shape),
                          0, 1, 'rainbow']
+    if variable.lower() == 'cph': scores['POFDice'] = scores.pop('POFDcld')
     scores['Heidke'] = [scu.heidke().reshape(adef.shape),
                         0, 1, 'rainbow']
     scores['Kuiper'] = [scu.kuiper().reshape(adef.shape),
@@ -193,6 +209,13 @@ def do_cma_cph_validation(data, adef, out_size, idxs, variable):
     # calculate bias limits for plotting
     scores['Bias'][2] = np.nanmax(np.abs(scores['Bias'][0])) / 2
     scores['Bias'][1] = scores['Bias'][2] * (-1)
+    
+    # change mean values, bias
+    if variable.lower() == 'cph':
+        scores['CALIOP mean'][0] = scu.mean(d, b).reshape(adef.shape)
+        scores['SEVIRI mean'][0] = scu.mean(d, c).reshape(adef.shape)
+        scores['Bias'][0] = scores['Bias'][0] * (-1)
+  
     return scores
 
 
@@ -404,13 +427,15 @@ def make_plot(scores, optf, crs, dnt, var, cosfield):
     for cnt, s in enumerate(scores.keys()):
         values = scores[s]
         values[0] = da.where(scores['Nobs'][0] < 50, np.nan, values[0])
+        cmap = plt.get_cmap(values[3])
+        cmap.set_bad('w')
         ax = fig.add_subplot(4, 4, cnt + 1, projection=crs)
         ims = ax.imshow(values[0],
                         transform=crs,
                         extent=crs.bounds,
                         vmin=values[1],
                         vmax=values[2],
-                        cmap=plt.get_cmap(values[3]),
+                        cmap=cmap,
                         origin='upper',
                         interpolation='none'
                         )
@@ -474,7 +499,7 @@ def make_scatter(data, optf, dnt, dataset):
         y = data['caliop_' + variable].compute()
 
         # divide CCI CTH by 1000 to convert from m to km
-        if variable == 'cth' and dataset == 'CCI':
+        if variable == 'cth': # and dataset == 'CCI':
             x /= 1000
             y /= 1000
 
@@ -533,7 +558,7 @@ def run(ipath, ifile, opath, dnts, satzs,
                      [None] if no limitation required.
     year (str):      String of year.
     month (str):     String of month.
-    dataset (str):   Dataset validated: Available: CCI, CLAAS3.
+    dataset (str):   Dataset validated: Available: CCI, CLAAS.
     chunksize (int): Size of data chunks to reduce memory usage.
     plot_area (str): Name of area definition in areas.yaml file to be used.
     """
@@ -546,7 +571,7 @@ def run(ipath, ifile, opath, dnts, satzs,
     if isinstance(satzs, str) or isinstance(satzs, int) or isinstance(satzs, float):
         satzs = [satzs]
 
-    if dataset not in ['CCI', 'CLAAS3']:
+    if dataset not in ['CCI', 'CLAAS']:
         raise Exception('Dataset {} not available!'.format(dataset))
 
     ofile_cma = 'CMA_{}_CALIOP_{}{}_DNT-{}_SATZ-{}.png'
