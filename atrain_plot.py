@@ -183,9 +183,9 @@ def do_cma_cph_validation(data, adef, out_size, idxs, variable):
                         0, 1, 'rainbow']
     scores['Bias'] = [scu.bias().reshape(adef.shape),
                       0, 1, 'bwr']
-    scores['CALIOP mean'] = [scu.mean().reshape(adef.shape),
+    scores['CALIOP mean'] = [scu.mean(a, c).reshape(adef.shape),
                              None, None, 'rainbow']
-    scores['SEVIRI mean'] = [scu.mean().reshape(adef.shape),
+    scores['SEVIRI mean'] = [scu.mean(a, b).reshape(adef.shape),
                              None, None, 'rainbow']
     scores['Nobs'] = [scu.n.reshape(adef.shape),
                       None, None, 'rainbow']
