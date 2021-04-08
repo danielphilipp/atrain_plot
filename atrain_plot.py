@@ -572,11 +572,15 @@ def run(ipath, ifile, opath, dnts, satzs,
             if dnt not in ['ALL', 'DAY', 'NIGHT', 'TWILIGHT']:
                 raise Exception('DNT {} not recognized'.format(dnt))
 
+            print('---------------------------')
+            print('\nDNT = {}\n'.format(dnt))
+            print('---------------------------')
+
             # set output filenames for CPH and CMA plot
-            ofile_cma = ofile_cma.format(dataset, year, month, dnt, satz_lim)
-            ofile_cph = ofile_cph.format(dataset, year, month, dnt, satz_lim)
-            ofile_ctth = ofile_ctth.format(dataset, year, month, dnt, satz_lim)
-            ofile_scat = ofile_scat.format(dataset, year, month, dnt, satz_lim)
+            ofile_cma_tmp = ofile_cma.format(dataset, year, month, dnt, satz_lim)
+            ofile_cph_tmp = ofile_cph.format(dataset, year, month, dnt, satz_lim)
+            ofile_ctth_tmp = ofile_ctth.format(dataset, year, month, dnt, satz_lim)
+            ofile_scat_tmp = ofile_scat.format(dataset, year, month, dnt, satz_lim)
 
             # get matchup data
             data, latlon = get_matchup_file_content(os.path.join(ipath, ifile),
@@ -610,10 +614,10 @@ def run(ipath, ifile, opath, dnts, satzs,
             cosfield = get_cosfield(lat)
 
             # do plotting
-            make_plot(cma_scores, os.path.join(opath, ofile_cma), crs,
+            make_plot(cma_scores, os.path.join(opath, ofile_cma_tmp), crs,
                       dnt, 'CMA', cosfield)
-            make_plot(cph_scores, os.path.join(opath, ofile_cph), crs,
+            make_plot(cph_scores, os.path.join(opath, ofile_cph_tmp), crs,
                       dnt, 'CPH', cosfield)
-            make_plot_CTTH(ctth_scores, os.path.join(opath, ofile_ctth),
+            make_plot_CTTH(ctth_scores, os.path.join(opath, ofile_ctth_tmp),
                            crs, dnt, 'CTTH', cosfield)
-            make_scatter(data, os.path.join(opath, ofile_scat), dnt, dataset)
+            make_scatter(data, os.path.join(opath, ofile_scat_tmp), dnt, dataset)
