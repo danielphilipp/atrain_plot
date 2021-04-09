@@ -31,6 +31,30 @@ def change_key(self, old, new):
         k, v = self.popitem(False)
         self[new if old == k else k] = v
 
+
+def apply_mask(cal_cma, sev_cma, cal_cph, sev_cph, 
+               cal_cth, sev_cth, cal_ctt, sev_ctt, 
+               mask):
+    """ Apply DNT mask if [DAY, NIGHT, TWILIGHT]. 
+        mask is None for ALL. """
+    if mask is not None:
+        cal_cma = da.where(mask, np.nan, cal_cma)
+        sev_cma = da.where(mask, np.nan, sev_cma)
+        cal_cph = da.where(mask, np.nan, cal_cph)
+        sev_cph = da.where(mask, np.nan, sev_cph)
+        cal_cth = da.where(mask, np.nan, cal_cth)
+        sev_cth = da.where(mask, np.nan, sev_cth)
+        cal_ctt = da.where(mask, np.nan, cal_ctt)
+        sev_ctt = da.where(mask, np.nan, sev_ctt)
+    
+    results = (cal_cma, sev_cma, 
+               cal_cph, sev_cph, 
+               cal_cth, sev_cth,
+               cal_ctt, sev_ctt)
+
+    return results
+
+
 def get_matchup_file_content(ipath, chunksize, dnt='ALL',
                              satz_lim=None, dataset='CCI'):
     """ Obtain variables from atrain_match HDF5 matchup file. """
@@ -81,56 +105,38 @@ def get_matchup_file_content(ipath, chunksize, dnt='ALL',
         sev_cph = da.where(mask, np.nan, sev_cph)
         cal_cth = da.where(mask, np.nan, cal_cth)
         sev_cth = da.where(mask, np.nan, sev_cth)
-        # cal_ctp = da.where(mask, np.nan, cal_ctt)
-        # sev_ctp = da.where(mask, np.nan, sev_ctt)
+        cal_ctt = da.where(mask, np.nan, cal_ctt)
+        sev_ctt = da.where(mask, np.nan, sev_ctt)
     # mask all pixels except daytime
     if dnt == 'DAY':
         mask = sunz >= 80
-        cal_cma = da.where(mask, np.nan, cal_cma)
-        sev_cma = da.where(mask, np.nan, sev_cma)
-        cal_cph = da.where(mask, np.nan, cal_cph)
-        sev_cph = da.where(mask, np.nan, sev_cph)
-        cal_cth = da.where(mask, np.nan, cal_cth)
-        sev_cth = da.where(mask, np.nan, sev_cth)
-        # cal_ctp = da.where(mask, np.nan, cal_ctt)
-        # sev_ctp = da.where(mask, np.nan, sev_ctt)
     # mask all pixels except nighttime
     elif dnt == 'NIGHT':
         mask = sunz <= 95
-        cal_cma = da.where(mask, np.nan, cal_cma)
-        sev_cma = da.where(mask, np.nan, sev_cma)
-        cal_cph = da.where(mask, np.nan, cal_cph)
-        sev_cph = da.where(mask, np.nan, sev_cph)
-        cal_cth = da.where(mask, np.nan, cal_cth)
-        sev_cth = da.where(mask, np.nan, sev_cth)
-        # cal_ctp = da.where(mask, np.nan, cal_ctt)
-        # sev_ctp = da.where(mask, np.nan, sev_ctt)
     # mask all pixels except twilight
     elif dnt == 'TWILIGHT':
         mask = ~da.logical_and(sunz > 80, sunz < 95)
-        cal_cma = da.where(mask, np.nan, cal_cma)
-        sev_cma = da.where(mask, np.nan, sev_cma)
-        cal_cph = da.where(mask, np.nan, cal_cph)
-        sev_cph = da.where(mask, np.nan, sev_cph)
-        cal_cth = da.where(mask, np.nan, cal_cth)
-        sev_cth = da.where(mask, np.nan, sev_cth)
-        # cal_ctp = da.where(mask, np.nan, cal_ctt)
-        # sev_ctp = da.where(mask, np.nan, sev_ctt)
+    # no masking
     elif dnt == 'ALL':
-        pass
+        mask = None
     else:
         raise Exception('DNT option ', dnt, ' is invalid.')
 
-    data = {'caliop_cma': cal_cma,
-            'imager_cma': sev_cma,
-            'caliop_cph': cal_cph,
-            'imager_cph': sev_cph,
+    # apply DNT masking
+    masked = apply_mask(cal_cma, sev_cma, cal_cph, 
+                        sev_cph, cal_cth, sev_cth,
+                        cal_ctt, sev_ctt, mask)
+
+    data = {'caliop_cma': masked[0],
+            'imager_cma': masked[1],
+            'caliop_cph': masked[2],
+            'imager_cph': masked[3],
             'satz': satz,
             'sunz': sunz,
-            'caliop_cth': cal_cth,
-            'imager_cth': sev_cth,
-            'caliop_ctt': cal_ctt,
-            'imager_ctt': sev_ctt,
+            'caliop_cth': masked[4],
+            'imager_cth': masked[5],
+            'caliop_ctt': masked[6],
+            'imager_ctt': masked[7],
             'caliop_cflag': cal_cflag}
 
     latlon = {'lat': lat,
