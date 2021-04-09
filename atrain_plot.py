@@ -26,15 +26,15 @@ import get_caliop as gc
 
 matplotlib.use('Agg')
 
-def change_key(self, old, new):
+def _change_key(self, old, new):
     for _ in range(len(self)):
         k, v = self.popitem(False)
         self[new if old == k else k] = v
 
 
-def apply_mask(cal_cma, sev_cma, cal_cph, sev_cph, 
-               cal_cth, sev_cth, cal_ctt, sev_ctt, 
-               mask):
+def _apply_dnt_mask(cal_cma, sev_cma, cal_cph, sev_cph, 
+                   cal_cth, sev_cth, cal_ctt, sev_ctt, 
+                   mask):
     """ Apply DNT mask if [DAY, NIGHT, TWILIGHT]. 
         mask is None for ALL. """
     if mask is not None:
@@ -55,7 +55,7 @@ def apply_mask(cal_cma, sev_cma, cal_cph, sev_cph,
     return results
 
 
-def get_matchup_file_content(ipath, chunksize, dnt='ALL',
+def _get_matchup_file_content(ipath, chunksize, dnt='ALL',
                              satz_lim=None, dataset='CCI'):
     """ Obtain variables from atrain_match HDF5 matchup file. """
 
@@ -123,9 +123,9 @@ def get_matchup_file_content(ipath, chunksize, dnt='ALL',
         raise Exception('DNT option ', dnt, ' is invalid.')
 
     # apply DNT masking
-    masked = apply_mask(cal_cma, sev_cma, cal_cph, 
-                        sev_cph, cal_cth, sev_cth,
-                        cal_ctt, sev_ctt, mask)
+    masked = _apply_dnt_mask(cal_cma, sev_cma, cal_cph, 
+                             sev_cph, cal_cth, sev_cth,
+                             cal_ctt, sev_ctt, mask)
 
     data = {'caliop_cma': masked[0],
             'imager_cma': masked[1],
@@ -145,7 +145,7 @@ def get_matchup_file_content(ipath, chunksize, dnt='ALL',
     return data, latlon
 
 
-def do_cma_cph_validation(data, adef, out_size, idxs, variable):
+def _do_cma_cph_validation(data, adef, out_size, idxs, variable):
     """ Calculate scores for CMA or CPH depending on variable arg. """
     
     # !!! for CPH '0' is water, '1' is ice !!!
@@ -225,7 +225,7 @@ def do_cma_cph_validation(data, adef, out_size, idxs, variable):
     return scores
 
 
-def do_ctth_validation(data, resampler, thrs=10):
+def _do_ctth_validation(data, resampler, thrs=10):
     """
     Calculate CTH and CTT bias. thrs: threshold value for filtering
     boxes with small number of obs.
@@ -360,7 +360,7 @@ def do_ctth_validation(data, resampler, thrs=10):
     return scores
 
 
-def do_ctp_validation(data, adef, out_size, idxs):
+def _do_ctp_validation(data, adef, out_size, idxs):
     """ Calculate CTP validation (NOT AVAILABLE YET). """
 
     # detected ctth mask
@@ -408,7 +408,7 @@ def do_ctp_validation(data, adef, out_size, idxs):
     return scores
 
 
-def get_cosfield(lat):
+def _get_cosfield(lat):
     """ Calculate 2D cos(lat) field for weighted averaging on regular grid."""
 
     latcos = np.abs(np.cos(lat * np.pi / 180))
@@ -416,7 +416,7 @@ def get_cosfield(lat):
     return cosfield
 
 
-def weighted_spatial_average(data, cosfield):
+def _weighted_spatial_average(data, cosfield):
     """ Calculate weighted spatial average. """
 
     if isinstance(data, xr.DataArray):
@@ -426,7 +426,7 @@ def weighted_spatial_average(data, cosfield):
     return da.nansum(data * cosfield) / da.nansum(cosfield)
 
 
-def make_plot(scores, optf, crs, dnt, var, cosfield):
+def _make_plot(scores, optf, crs, dnt, var, cosfield):
     """ Plot CMA/CPH scores. """
 
     fig = plt.figure(figsize=(16, 7))
@@ -446,7 +446,7 @@ def make_plot(scores, optf, crs, dnt, var, cosfield):
                         interpolation='none'
                         )
         ax.coastlines(color='black')
-        # mean = weighted_spatial_average(values[0], cosfield).compute()
+        # mean = _weighted_spatial_average(values[0], cosfield).compute()
         # mean = '{:.2f}'.format(da.nanmean(values[0]).compute())
         mean = ''
         ax.set_title(var + ' ' + s + ' ' + dnt + ' {}'.format(mean))
@@ -456,7 +456,7 @@ def make_plot(scores, optf, crs, dnt, var, cosfield):
     print('SAVED ', os.path.basename(optf))
 
 
-def make_plot_CTTH(scores, optf, crs, dnt, var, cosfield):
+def _make_plot_CTTH(scores, optf, crs, dnt, var, cosfield):
     """ Plot CTH/CTT biases. """
     fig = plt.figure(figsize=(16, 12))
     for cnt, s in enumerate(scores.keys()):
@@ -476,7 +476,7 @@ def make_plot_CTTH(scores, optf, crs, dnt, var, cosfield):
                         )
         ax.coastlines(color='black')
         # mean = ''
-        mean = weighted_spatial_average(values[0], cosfield).compute()
+        mean = _weighted_spatial_average(values[0], cosfield).compute()
         mean = '{:.2f}'.format(da.nanmean(values[0]).compute())
         ax.set_title(var + ' ' + s + ' ' + dnt + ' {}'.format(mean))
         plt.colorbar(ims)
@@ -486,7 +486,7 @@ def make_plot_CTTH(scores, optf, crs, dnt, var, cosfield):
     print('SAVED ', os.path.basename(optf))
 
 
-def make_scatter(data, optf, dnt, dataset):
+def _make_scatter(data, optf, dnt, dataset):
     """ Plot CTH/CTT scatter plots. """
 
     from scipy.stats import linregress
@@ -614,9 +614,9 @@ def run(ipath, ifile, opath, dnts, satzs,
             ofile_scat_tmp = ofile_scat.format(dataset, year, month, dnt, satz_lim)
 
             # get matchup data
-            data, latlon = get_matchup_file_content(os.path.join(ipath, ifile),
-                                                    chunksize, dnt, satz_lim,
-                                                    dataset)
+            data, latlon = _get_matchup_file_content(os.path.join(ipath, ifile),
+                                                     chunksize, dnt, satz_lim,
+                                                     dataset)
 
             # define plotting area
             module_path = os.path.dirname(__file__)
@@ -632,23 +632,23 @@ def run(ipath, ifile, opath, dnts, satzs,
             lon, lat = adef.get_lonlats()
 
             # do validation
-            cma_scores = do_cma_cph_validation(data, adef, out_size,
-                                               idxs, 'cma')
-            cph_scores = do_cma_cph_validation(data, adef, out_size,
-                                               idxs, 'cph')
-            ctth_scores = do_ctth_validation(data, resampler, thrs=10)
+            cma_scores = _do_cma_cph_validation(data, adef, out_size,
+                                                idxs, 'cma')
+            cph_scores = _do_cma_cph_validation(data, adef, out_size,
+                                                idxs, 'cph')
+            ctth_scores = _do_ctth_validation(data, resampler, thrs=10)
 
             # get crs for plotting
             crs = adef.to_cartopy_crs()
 
             # get cos(lat) filed for weighted average on global regular grid
-            cosfield = get_cosfield(lat)
+            cosfield = _get_cosfield(lat)
 
             # do plotting
-            make_plot(cma_scores, os.path.join(opath, ofile_cma_tmp), crs,
-                      dnt, 'CMA', cosfield)
-            make_plot(cph_scores, os.path.join(opath, ofile_cph_tmp), crs,
-                      dnt, 'CPH', cosfield)
-            make_plot_CTTH(ctth_scores, os.path.join(opath, ofile_ctth_tmp),
-                           crs, dnt, 'CTTH', cosfield)
-            make_scatter(data, os.path.join(opath, ofile_scat_tmp), dnt, dataset)
+            _make_plot(cma_scores, os.path.join(opath, ofile_cma_tmp), crs,
+                       dnt, 'CMA', cosfield)
+            _make_plot(cph_scores, os.path.join(opath, ofile_cph_tmp), crs,
+                       dnt, 'CPH', cosfield)
+            _make_plot_CTTH(ctth_scores, os.path.join(opath, ofile_ctth_tmp),
+                            crs, dnt, 'CTTH', cosfield)
+            _make_scatter(data, os.path.join(opath, ofile_scat_tmp), dnt, dataset)
