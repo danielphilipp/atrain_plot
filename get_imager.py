@@ -18,6 +18,11 @@ def get_imager_ctt(ds):
     tempe = np.where(tempe < 0, np.nan, tempe)
     return tempe
 
+def get_imager_ctp(ds):
+    """ Get imager CTP. """
+    pres = np.array(ds['ctth_pressure'])
+    pres = np.where(pres < 0, np.nan, pres)
+    return pres
 
 def get_imager_cph(ds):
     """ Get imager CPH. """

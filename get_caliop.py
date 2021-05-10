@@ -5,12 +5,22 @@ from atrain_match.utils.get_flag_info import get_calipso_clouds_of_type_i_featur
 from atrain_match.utils import validate_cph_util as vcu
 
 
+def get_tropopause_height(ds):
+    """Get tropopause height from caliop file"""
+    tropo_height = np.array(ds['tropopause_height'])[:] # in km over sea level
+    tropo_height = np.where(tropo_height < 0,np.nan,tropo_height*1000.)
+    elev = np.array(ds['elevation']) # in m
+    # compute height above surface
+    tropo_height_surf = tropo_height - elev
+    return tropo_height_surf
+
 def get_caliop_cth(ds):
     """Get CALIOP CTH."""
     cth = np.array(ds['layer_top_altitude'])[:, 0]
     elev = np.array(ds['elevation'])
     # set FillValue to NaN, convert to m
     cth = np.where(cth == -9999, np.nan, cth * 1000.)
+    cth = np.where(cth < 0, np.nan, cth)    
     # compute height above surface
     cth_surf = cth - elev
     return cth_surf
@@ -22,6 +32,11 @@ def get_caliop_ctt(ds):
     ctt = np.where(ctt == -9999, np.nan, ctt + 273.15)
     ctt = np.where(ctt < 0, np.nan, ctt)
     return ctt
+    
+def get_caliop_ctp(ds):
+    ctp = np.array(ds['layer_top_pressure'])[:, 0]
+    ctp = np.where(ctp < 0, np.nan, ctp)
+    return ctp
 
 
 def get_calipso_clouds_of_type_i(cflag, calipso_cloudtype=0):
@@ -89,7 +104,6 @@ def get_calipso_tp(cfalg):
 
 def get_calipso_low_clouds_op(match_calipso):
     """Get CALIPSO low and opaque clouds."""
-    # type 0, 1, 2, 3 are low cloudtypes
     calipso_low = np.logical_or(
         get_calipso_clouds_of_type_i(match_calipso, calipso_cloudtype=1),
         get_calipso_clouds_of_type_i(match_calipso, calipso_cloudtype=2))
@@ -98,7 +112,6 @@ def get_calipso_low_clouds_op(match_calipso):
 
 def get_calipso_medium_and_high_clouds_tp(match_calipso):
     """Get CALIPSO medium transparent and high transparent clouds."""
-    # type 0, 1, 2, 3 are low cloudtypes
     calipso_transp = np.logical_or(
         get_calipso_clouds_of_type_i(match_calipso, calipso_cloudtype=4),
         get_calipso_clouds_of_type_i(match_calipso, calipso_cloudtype=6))

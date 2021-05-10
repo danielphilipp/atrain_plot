@@ -26,15 +26,14 @@ import get_caliop as gc
 
 matplotlib.use('Agg')
 
-def _change_key(self, old, new):
-    for _ in range(len(self)):
-        k, v = self.popitem(False)
-        self[new if old == k else k] = v
+import warnings     # suppress warning of masked array/nanmean
+warnings.filterwarnings("ignore", message="invalid value encountered in true_divide")
+
 
 
 def _apply_dnt_mask(cal_cma, sev_cma, cal_cph, sev_cph, 
                    cal_cth, sev_cth, cal_ctt, sev_ctt, 
-                   mask):
+                   cal_ctp, sev_ctp, mask):
     """ Apply DNT mask if [DAY, NIGHT, TWILIGHT]. 
         mask is None for ALL. """
     if mask is not None:
@@ -46,11 +45,14 @@ def _apply_dnt_mask(cal_cma, sev_cma, cal_cph, sev_cph,
         sev_cth = da.where(mask, np.nan, sev_cth)
         cal_ctt = da.where(mask, np.nan, cal_ctt)
         sev_ctt = da.where(mask, np.nan, sev_ctt)
+        cal_ctp = da.where(mask, np.nan, cal_ctp)
+        sev_ctp = da.where(mask, np.nan, sev_ctp)
     
     results = (cal_cma, sev_cma, 
                cal_cph, sev_cph, 
                cal_cth, sev_cth,
-               cal_ctt, sev_ctt)
+               cal_ctt, sev_ctt,
+               cal_ctp, sev_ctp)
 
     return results
 
@@ -69,19 +71,16 @@ def _get_matchup_file_content(ipath, chunksize, dnt='ALL',
     else:
         raise Exception('Dataset {} not known!'.format(dataset))
 
-    # get CTH and CTT
+    # get CTH, CTT, CTP
     sev_cth = da.from_array(gi.get_imager_cth(imager), chunks=chunksize)
     cal_cth = da.from_array(gc.get_caliop_cth(caliop), chunks=chunksize)
     sev_ctt = da.from_array(gi.get_imager_ctt(imager), chunks=chunksize)
     cal_ctt = da.from_array(gc.get_caliop_ctt(caliop), chunks=chunksize)
     cal_cflag = np.array(caliop['feature_classification_flags'][::, 0])
-
-    # ctp_c = np.array(caliop['layer_top_pressure'])[:,0]
-    # ctp_c = np.where(ctp_c == -9999, np.nan,ctp_c)
-    # ctp_pps = np.array(imager['ctth_pressure'])
-    # ctp_pps = np.where(ctp_pps==-9, np.nan, ctp_pps)
-    # sev_ctp = da.from_array(ctp_pps, chunks=(chunksize))
-    # cal_ctp = da.from_array(ctp_c, chunks=(chunksize))
+    if filter_stratospheric:
+        tropo_height = da.from_array(gc.get_tropopause_height(caliop), chunks=chunksize)
+    sev_ctp = da.from_array(gi.get_imager_ctp(imager), chunks=(chunksize))
+    cal_ctp = da.from_array(gc.get_caliop_ctp(caliop), chunks=(chunksize))
 
     # get CMA, CPH, VZA, SZA, LAT and LON
     sev_cph = da.from_array(gi.get_imager_cph(imager), chunks=chunksize)
@@ -95,7 +94,7 @@ def _get_matchup_file_content(ipath, chunksize, dnt='ALL',
     # mask fill values for angles
     satz = np.where(satz==-9, np.nan, satz)
     sunz = np.where(sunz==-9, np.nan, sunz)
-
+    
     # mask satellize zenith angle
     if satz_lim is not None:
         mask = satz > satz_lim
@@ -107,6 +106,8 @@ def _get_matchup_file_content(ipath, chunksize, dnt='ALL',
         sev_cth = da.where(mask, np.nan, sev_cth)
         cal_ctt = da.where(mask, np.nan, cal_ctt)
         sev_ctt = da.where(mask, np.nan, sev_ctt)
+        cal_ctp = da.where(mask, np.nan, cal_ctp)
+        sev_ctp = da.where(mask, np.nan, sev_ctp)
     # mask all pixels except daytime
     if dnt == 'DAY':
         mask = sunz >= 80
@@ -122,11 +123,22 @@ def _get_matchup_file_content(ipath, chunksize, dnt='ALL',
     else:
         raise Exception('DNT option ', dnt, ' is invalid.')
 
+    # filter stratospheric clouds in CALIPSO 
+    if filter_stratospheric:
+        strato_mask = cal_cth>tropo_height
+        cal_cma = da.where(strato_mask, np.nan, cal_cma)
+        cal_cph = da.where(strato_mask, np.nan, cal_cph)
+        cal_cth = da.where(strato_mask, np.nan, cal_cth)
+        cal_ctt = da.where(strato_mask, np.nan, cal_ctt)
+        cal_ctp = da.where(strato_mask, np.nan, cal_ctp)
+    
     # apply DNT masking
     masked = _apply_dnt_mask(cal_cma, sev_cma, cal_cph, 
                              sev_cph, cal_cth, sev_cth,
-                             cal_ctt, sev_ctt, mask)
-
+                             cal_ctt, sev_ctt,
+                             cal_ctp, sev_ctp,
+                             mask)
+    
     data = {'caliop_cma': masked[0],
             'imager_cma': masked[1],
             'caliop_cph': masked[2],
@@ -137,7 +149,10 @@ def _get_matchup_file_content(ipath, chunksize, dnt='ALL',
             'imager_cth': masked[5],
             'caliop_ctt': masked[6],
             'imager_ctt': masked[7],
-            'caliop_cflag': cal_cflag}
+            'caliop_ctp': masked[8],
+            'imager_ctp': masked[9],
+            'caliop_cflag': cal_cflag,
+            }
 
     latlon = {'lat': lat,
               'lon': lon}
@@ -225,7 +240,7 @@ def _do_cma_cph_validation(data, adef, out_size, idxs, variable):
     return scores
 
 
-def _do_ctth_validation(data, resampler, thrs=10):
+def _do_ctth_validation_OLD(data, resampler, thrs=10):
     """
     Calculate CTH and CTT bias. thrs: threshold value for filtering
     boxes with small number of obs.
@@ -359,9 +374,91 @@ def _do_ctth_validation(data, resampler, thrs=10):
     # None, None, 'rainbow']
     return scores
 
+def _do_ctth_validation(data, adef, out_size, idxs, resampler, thrs=10):
+    """
+    Calculate CTH and CTT bias. thrs: threshold value for filtering
+    boxes with small number of obs.
+    """
+
+    # mask of detected ctth
+    detected_clouds = da.logical_and(data['caliop_cma'] == 1,
+                                     data['imager_cma'] == 1)
+    detected_height = da.logical_and(detected_clouds,
+                                     np.isfinite(data['imager_cth']))
+    detected_temperature = np.logical_and(detected_clouds,
+                                          np.isfinite(data['imager_ctt']))
+    detected_pressure = np.logical_and(detected_clouds,
+                                          np.isfinite(data['imager_ctp']))                                      
+    detected_height_mask = detected_height.astype(int)
+
+    # calculate bias and mea for all ctth cases
+    delta_h = data['imager_cth'] - data['caliop_cth']  # HEIGHT
+    height_bias = np.where(detected_height, delta_h, np.nan)
+    delta_t = data['imager_ctt'] - data['caliop_ctt']  # TEMPERATURE
+    temperature_bias = np.where(detected_temperature, delta_t, np.nan)
+    delta_p = data['imager_ctp'] - data['caliop_ctp']  # PRESSURE
+    pressure_bias = np.where(detected_pressure, delta_p, np.nan)
+
+    # clouds levels (from calipso 'cloud type')
+    low_clouds = gc.get_calipso_low_clouds(data['caliop_cflag'])
+    detected_low = np.logical_and(detected_height, low_clouds)
+    bias_low = np.where(detected_low, height_bias, np.nan)
+    bias_temperature_low = np.where(detected_low, temperature_bias, np.nan)
+    mid_clouds = gc.get_calipso_medium_clouds(data['caliop_cflag'])
+    detected_mid = np.logical_and(detected_height, mid_clouds)
+    bias_mid = np.where(detected_mid, height_bias, np.nan)
+    high_clouds = gc.get_calipso_high_clouds(data['caliop_cflag'])
+    detected_high = np.logical_and(detected_height, high_clouds)
+    bias_high = np.where(detected_high, height_bias, np.nan)
+
+    # resample and filter some data out
+    n_matched_cases = resampler.get_sum(detected_height_mask)
+    sev_cth_average = resampler.get_average(data['imager_cth'])
+    cal_cth_average = resampler.get_average(data['caliop_cth'])
+    bias_average = resampler.get_average(height_bias)
+    bias_average = np.where(n_matched_cases < thrs, np.nan, bias_average)
+    bias_temperature_average = resampler.get_average(temperature_bias)
+    bias_temperature_average = np.where(n_matched_cases < thrs, np.nan,
+                                        bias_temperature_average)
+    bias_pressure_average = resampler.get_average(pressure_bias)
+    bias_pressure_average = np.where(n_matched_cases < thrs, np.nan,
+                                        bias_pressure_average)
+
+    n_matched_cases_low = resampler.get_sum(detected_low.astype(int))
+    bias_low_average = resampler.get_average(bias_low)
+    bias_low_average = np.where(n_matched_cases_low < thrs,
+                                np.nan, bias_low_average)
+    n_matched_cases_mid = resampler.get_sum(detected_mid.astype(int))
+    bias_mid_average = resampler.get_average(bias_mid)
+    bias_mid_average = np.where(n_matched_cases_mid < thrs, np.nan,
+                                bias_mid_average)
+    n_matched_cases_high = resampler.get_sum(detected_high.astype(int))
+    bias_high_average = resampler.get_average(bias_high)
+    bias_high_average = np.where(n_matched_cases_high < thrs, np.nan,
+                                 bias_high_average)
+
+    # calculate scores
+    scores = dict()
+    # [scores_on_target_grid, vmin, vmax, cmap]
+    scores['Bias CTH'] = [bias_average, -4000, 4000, 'bwr']
+    scores['Bias CTT'] = [bias_temperature_average, -30, 30, 'bwr']
+    scores['Bias CTP'] = [bias_pressure_average, -200, 200, 'bwr']
+    
+    scores['Bias CTH low'] = [bias_low_average, -2000, 2000, 'bwr']
+    scores['Bias CTH middle'] = [bias_mid_average, -2000, 2000, 'bwr']
+    scores['Bias CTH high'] = [bias_high_average, -6000, 6000, 'bwr']
+    
+    addit_scores = _do_ctp_validation(data, adef, out_size, idxs)
+    scores.update(addit_scores)
+    
+    scores['CALIOP CTH mean'] = [cal_cth_average, 1000, 14000, 'rainbow']
+    scores['SEVIRI CTH mean'] = [sev_cth_average, 1000, 14000, 'rainbow']
+    scores['Num_detected_height'] = [n_matched_cases, None, None, 'rainbow']
+    
+    return scores
 
 def _do_ctp_validation(data, adef, out_size, idxs):
-    """ Calculate CTP validation (NOT AVAILABLE YET). """
+    """ Calculate CTP validation (included in CTTH plot). """
 
     # detected ctth mask
     detected_clouds = da.logical_and(data['caliop_cma'] == 1,
@@ -369,7 +466,7 @@ def _do_ctp_validation(data, adef, out_size, idxs):
     detected_height = da.logical_and(detected_clouds,
                                      np.isfinite(data['imager_cth']))
     # find pps low and caliop low
-    low_clouds_c = get_calipso_low_clouds(data['caliop_cflag'])
+    low_clouds_c = gc.get_calipso_low_clouds(data['caliop_cflag'])
     detected_low_c = np.logical_and(detected_height, low_clouds_c)
     low_clouds_pps = da.where(data['imager_ctp'] > 680., 1, 0)
     detected_low_pps = da.logical_and(detected_height, low_clouds_pps)
@@ -394,16 +491,12 @@ def _do_ctp_validation(data, adef, out_size, idxs):
     d, _ = da.histogram(idxs, bins=out_size, range=(0, out_size),
                         weights=clr_clr_d, density=False)
 
-    # n = a + b + c + d
-    # n2d = N.reshape(adef.shape)
-
-    # scores = [hitrate(a, d, n).reshape(adef.shape),
-    # 0.7, 1, 'rainbow'] # hitrate low PPS
-    pod_low = a / (a + c)
-    far_low = c / (a + c)
+    scu = ScoreUtils(a, b, c, d)
     scores = dict()
-    scores['POD low clouds'] = [pod_low.reshape(adef.shape), 0.2, 1, 'rainbow']
-    scores['FAR low clouds'] = [far_low.reshape(adef.shape), 0.2, 1, 'rainbow']
+    scores['CTP low clouds POD'] = [scu.pod_1().reshape(adef.shape), 0, 1, 'rainbow']
+    scores['CTP low clouds FAR'] = [scu.far_1().reshape(adef.shape), 0, 1, 'rainbow']
+    scores['CTP low clouds POFD'] = [scu.pofd_1().reshape(adef.shape), 0, 1, 'rainbow']
+    # scores['Heidke low clouds'] = [scu.heidke().reshape(adef.shape),0, 1, 'rainbow']
 
     return scores
 
@@ -433,7 +526,7 @@ def _make_plot(scores, optf, crs, dnt, var, cosfield):
     for cnt, s in enumerate(scores.keys()):
         values = scores[s]
         values[0] = da.where(scores['Nobs'][0] < 50, np.nan, values[0])
-        cmap = plt.get_cmap(values[3])
+        cmap = plt.get_cmap(values[3]).copy()
         cmap.set_bad('w')
         ax = fig.add_subplot(4, 4, cnt + 1, projection=crs)
         ims = ax.imshow(values[0],
@@ -458,11 +551,11 @@ def _make_plot(scores, optf, crs, dnt, var, cosfield):
 
 def _make_plot_CTTH(scores, optf, crs, dnt, var, cosfield):
     """ Plot CTH/CTT biases. """
-    fig = plt.figure(figsize=(16, 12))
+    fig = plt.figure(figsize=(14, 9))
     for cnt, s in enumerate(scores.keys()):
         values = scores[s]
         masked_values = np.ma.array(values[0], mask=np.isnan(values[0]))
-        cmap = plt.get_cmap(values[3])
+        cmap = plt.get_cmap(values[3]).copy()
         cmap.set_bad('grey', 1.)
         ax = fig.add_subplot(4, 3, cnt + 1, projection=crs)  # ccrs.Robinson()
         ims = ax.imshow(masked_values,
@@ -478,7 +571,7 @@ def _make_plot_CTTH(scores, optf, crs, dnt, var, cosfield):
         # mean = ''
         mean = _weighted_spatial_average(values[0], cosfield).compute()
         mean = '{:.2f}'.format(da.nanmean(values[0]).compute())
-        ax.set_title(var + ' ' + s + ' ' + dnt + ' {}'.format(mean))
+        ax.set_title(s + ' ' + dnt + ' {}'.format(mean))
         plt.colorbar(ims)
     plt.tight_layout()
     plt.savefig(optf)
@@ -492,13 +585,13 @@ def _make_scatter(data, optf, dnt, dataset):
     from scipy.stats import linregress
     from matplotlib.colors import LogNorm
 
-    fig = plt.figure(figsize=(12, 4))
+    fig = plt.figure(figsize=(16, 4))
     # variable to be plotted
-    vars = ['cth', 'ctt']
+    vars = ['cth', 'ctt','ctp']
     # limits for plotting
-    lims = {'cth': (0, 25), 'ctt': (150, 325)}
+    lims = {'cth': (0, 25), 'ctt': (150, 325),'ctp': (0,1100)}
     # units for plotting
-    units = {'cth': 'km', 'ctt': 'm'}
+    units = {'cth': 'km', 'ctt': 'm', 'ctp':'hPa'}
 
     for cnt, variable in enumerate(vars):
         x = data['imager_' + variable].compute()
@@ -517,7 +610,7 @@ def _make_scatter(data, optf, dnt, dataset):
         x = x[~mask]
         y = y[~mask]
 
-        ax = fig.add_subplot(1, 2, cnt + 1)
+        ax = fig.add_subplot(1, 3, cnt + 1)
         h = ax.hist2d(x, y,
                       bins=(100, 100),
                       cmap=plt.get_cmap('YlOrRd'),
@@ -537,7 +630,7 @@ def _make_scatter(data, optf, dnt, dataset):
         ax.set_title(variable.upper() + ' ' + dnt, fontweight='bold')
         # write regression parameters to plot
         ax.annotate(xy=(0.05, 0.9),
-                    s='r={:.2f}\nr**2={:.2f}'.format(reg[2], reg[2] * reg[2]),
+                    text='r={:.2f}\nr**2={:.2f}'.format(reg[2], reg[2] * reg[2]),
                     xycoords='axes fraction', color='blue', fontweight='bold',
                     backgroundcolor='lightgrey')
 
@@ -551,7 +644,7 @@ def _make_scatter(data, optf, dnt, dataset):
 
 def run(ipath, ifile, opath, dnts, satzs,
         year, month, dataset, chunksize=100000,
-        plot_area='pc_world'):
+        plot_area='pc_world',FILTER_STRATOSPHERIC_CLOUDS=False):
     """
     Main function to be called in external script to run atrain_plot.
 
@@ -567,8 +660,13 @@ def run(ipath, ifile, opath, dnts, satzs,
     dataset (str):   Dataset validated: Available: CCI, CLAAS.
     chunksize (int): Size of data chunks to reduce memory usage.
     plot_area (str): Name of area definition in areas.yaml file to be used.
+    FILTER_STRATOSPHERIC_CLOUDS(bool): filter calipso data with CTH>tropopause height
     """
 
+    global filter_stratospheric
+    filter_stratospheric = FILTER_STRATOSPHERIC_CLOUDS
+    print('Filter stratospheric clouds: ',filter_stratospheric)
+    
     # if dnts is single string convert to list
     if isinstance(dnts, str):
         dnts = [dnts]
@@ -636,7 +734,8 @@ def run(ipath, ifile, opath, dnts, satzs,
                                                 idxs, 'cma')
             cph_scores = _do_cma_cph_validation(data, adef, out_size,
                                                 idxs, 'cph')
-            ctth_scores = _do_ctth_validation(data, resampler, thrs=10)
+            ctth_scores = _do_ctth_validation(data, adef, out_size,
+                                                idxs, resampler, thrs=10)
 
             # get crs for plotting
             crs = adef.to_cartopy_crs()
