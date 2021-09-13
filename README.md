@@ -1,5 +1,5 @@
 # atrain_plot
-Plot https://github.com/foua-pps/atrain_match collocated results on spatial maps.
+Plot https://github.com/foua-pps/atrain_match collocated results on spatial maps and histograms.
 
 Imports atrain_match scripts so atrain_match has to be available on your machine and should be appended to your PYTHONPATH environment variable.
 
@@ -9,9 +9,7 @@ Example:
 
 import atrain_plot
 
-ipath='/path/to/your/hdf5/matchup/file'
-
-ifile='matchup_filename.h5'
+ipath_calipso='/path/to/your/hdf5/matchup/file/matchup_calipso_filename.h5'
 
 opath='/path/where/figs/should/be/saved'
 
@@ -25,6 +23,6 @@ month = '07'
 
 dataset 'CCI' #CLAAS3
 
-atrain_plot.run(ipath, ifile, opath, dnts, satzs, year, month, dataset)
+atrain_plot.run(ipath_calipso,  opath, dnts, satzs, year, month, dataset)
 
 #---------------------------
