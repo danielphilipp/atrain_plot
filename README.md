@@ -23,6 +23,6 @@ month = '07'
 
 dataset 'CCI' #CLAAS3
 
-atrain_plot.run(ipath_calipso,  opath, dnts, satzs, year, month, dataset)
+atrain_plot.run(ifilepath_calipso=ipath_calipso,  opath=opath, dnts=dnts, satzs=satzs, year=year, month=month, dataset=dataset)
 
 #---------------------------
