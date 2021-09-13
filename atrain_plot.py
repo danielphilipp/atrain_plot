@@ -20,9 +20,11 @@ import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 from collections import OrderedDict
-from scores import ScoreUtils
-import get_imager as gi
-import get_caliop as gc
+from atrain_plot.scores import ScoreUtils
+import atrain_plot.get_imager as gi
+import atrain_plot.get_caliop as gc
+import atrain_plot.get_amsr as ga
+from scipy.stats import pearsonr
 
 matplotlib.use('Agg')
 
@@ -57,7 +59,7 @@ def _apply_dnt_mask(cal_cma, sev_cma, cal_cph, sev_cph,
     return results
 
 
-def _get_matchup_file_content(ipath, chunksize, dnt='ALL',
+def _get_calipso_matchup_file_content(ipath, chunksize, dnt='ALL',
                              satz_lim=None, dataset='CCI'):
     """ Obtain variables from atrain_match HDF5 matchup file. """
 
@@ -374,6 +376,7 @@ def _do_ctth_validation_OLD(data, resampler, thrs=10):
     # None, None, 'rainbow']
     return scores
 
+
 def _do_ctth_validation(data, adef, out_size, idxs, resampler, thrs=10):
     """
     Calculate CTH and CTT bias. thrs: threshold value for filtering
@@ -457,6 +460,7 @@ def _do_ctth_validation(data, adef, out_size, idxs, resampler, thrs=10):
     
     return scores
 
+
 def _do_ctp_validation(data, adef, out_size, idxs):
     """ Calculate CTP validation (included in CTTH plot). """
 
@@ -526,7 +530,7 @@ def _make_plot(scores, optf, crs, dnt, var, cosfield):
     for cnt, s in enumerate(scores.keys()):
         values = scores[s]
         values[0] = da.where(scores['Nobs'][0] < 50, np.nan, values[0])
-        cmap = plt.get_cmap(values[3]).copy()
+        cmap = plt.get_cmap(values[3])#.copy()
         cmap.set_bad('w')
         ax = fig.add_subplot(4, 4, cnt + 1, projection=crs)
         ims = ax.imshow(values[0],
@@ -549,13 +553,38 @@ def _make_plot(scores, optf, crs, dnt, var, cosfield):
     print('SAVED ', os.path.basename(optf))
 
 
+def _make_plot_lwp(results, crs, optf):
+    """ Plot LWP stats on spatial grid. """
+    fig = plt.figure(figsize=(16, 6))
+
+    for cnt, s in enumerate(results.keys()):
+        ax = fig.add_subplot(2, 3, cnt+1, projection=crs)
+        ims = ax.imshow(results[s][0],
+                        transform=crs,
+                        extent=crs.bounds,
+                        vmin=results[s][1],
+                        vmax=results[s][2],
+                        cmap=plt.get_cmap(results[s][3]),
+                        origin='upper',
+                        interpolation='none'
+                        )
+        ax.coastlines(color='black')
+        cbar = plt.colorbar(ims)
+        cbar.set_label(s + r' [g m$^{-2}$]')
+        ax.set_title(s, fontweight='bold')
+
+    plt.tight_layout()
+    plt.savefig(optf)
+    print('SAVED ', os.path.basename(optf))
+
+
 def _make_plot_CTTH(scores, optf, crs, dnt, var, cosfield):
     """ Plot CTH/CTT biases. """
     fig = plt.figure(figsize=(14, 9))
     for cnt, s in enumerate(scores.keys()):
         values = scores[s]
         masked_values = np.ma.array(values[0], mask=np.isnan(values[0]))
-        cmap = plt.get_cmap(values[3]).copy()
+        cmap = plt.get_cmap(values[3])#.copy()
         cmap.set_bad('grey', 1.)
         ax = fig.add_subplot(4, 3, cnt + 1, projection=crs)  # ccrs.Robinson()
         ims = ax.imshow(masked_values,
@@ -578,8 +607,75 @@ def _make_plot_CTTH(scores, optf, crs, dnt, var, cosfield):
     plt.close()
     print('SAVED ', os.path.basename(optf))
 
+def _make_scatter_lwp(X, Y, optf):
 
-def _make_scatter(data, optf, dnt, dataset):
+    X = X.compute()
+    Y = Y.compute()
+
+    N = X.shape[0]
+    bias = np.mean(Y - X)
+    std = np.sqrt(1 / N * np.sum((Y - X - bias) ** 2))
+    rms = np.sqrt(1 / N * np.sum((Y - X) ** 2))
+
+    r, p = pearsonr(X, Y)
+    ann = 'Corr    : {:.2f}\n' + \
+          'RMSE    : {:.2f}\n' + \
+          'bc-RMSE : {:.2f}\n' + \
+          'Bias    : {:.2f}\n' + \
+          'N       : {:d}'
+    ann = ann.format(r, rms, std, bias, N)
+
+    dummy = np.arange(0, X.shape[0])
+    fig = plt.figure(figsize=(16,9))
+    ax = fig.add_subplot(221)
+    h = ax.hist2d(X, Y, bins=34,
+                  cmap=plt.get_cmap('viridis'), cmin=1,
+                  vmin=0, vmax=50000, range=[[0,200],[0,200]])#, norm=LogNorm())
+    cbar = plt.colorbar(h[3])
+    ax.plot(dummy, dummy, color='black')
+    ax.set_xlim(0, 170)
+    ax.set_ylim(0, 170)
+    ax.set_ylabel(r'CCI LWP [g m$^{-2}$]')
+    ax.set_xlabel(r'AMSR2 LWP [g m$^{-2}$]')
+    ax.set_title('Cloud_cci+ LWP vs. AMSR2 LWP', fontweight='bold')
+
+    ax = fig.add_subplot(222)
+    ax.grid(color='grey', linestyle='--')
+    ax.hist(Y-X, bins=120, density=False,
+            weights=(100*(np.ones(X.shape[0])/X.shape[0])), color='black')
+    ax.set_xlabel(r'Difference CCI - AMSR2 [g m$^{-2}$]')
+    ax.set_ylabel('Percent of data [%]')
+    ax.set_title('CCI - AMSR2 LWP difference distribution', fontweight='bold')
+    ax.annotate(ann, xy=(0.05, 0.75), xycoords='axes fraction')
+
+    ax = fig.add_subplot(223)
+    ax.grid(color='grey', linestyle='--')
+    ax.hist(Y, bins=60, density=False, weights=(100*(np.ones(X.shape[0])/X.shape[0])), range=[0,300])
+    ax.set_title('Cloud_cci+ LWP distribution', fontweight='bold')
+    ax.set_xlabel(r'CCI LWP [g m$^{-2}$]')
+    ax.set_ylabel('Percent of data [%]')
+    ax.set_xlim(0, 300)
+    ylim = ax.get_ylim()
+
+    ax = fig.add_subplot(224)
+    ax.grid(color='grey', linestyle='--')
+    ax.hist(X, bins=60, density=False, weights=(100*(np.ones(X.shape[0])/X.shape[0])), color='red', range=[0,300])
+    ax.set_title('AMSR2 LWP distribution', fontweight='bold')
+    ax.set_xlabel(r'AMSR2 LWP [g m$^{-2}$]')
+    ax.set_ylabel('Percent of data [%]')
+    ax.set_xlim(0, 300)
+    ax.set_ylim(ylim)
+
+    plt.tight_layout()
+    if optf is not None:
+        plt.savefig(optf)
+        print('SAVED: {}'.format(optf))
+    else:
+        plt.show()
+
+    return ann
+
+def _make_scatter_ctx(data, optf, dnt, dataset):
     """ Plot CTH/CTT scatter plots. """
 
     from scipy.stats import linregress
@@ -630,7 +726,7 @@ def _make_scatter(data, optf, dnt, dataset):
         ax.set_title(variable.upper() + ' ' + dnt, fontweight='bold')
         # write regression parameters to plot
         ax.annotate(xy=(0.05, 0.9),
-                    text='r={:.2f}\nr**2={:.2f}'.format(reg[2], reg[2] * reg[2]),
+                    s='r={:.2f}\nr**2={:.2f}'.format(reg[2], reg[2] * reg[2]),
                     xycoords='axes fraction', color='blue', fontweight='bold',
                     backgroundcolor='lightgrey')
 
@@ -642,9 +738,9 @@ def _make_scatter(data, optf, dnt, dataset):
     print('SAVED ', os.path.basename(optf))
 
 
-def run(ipath, ifile, opath, dnts, satzs,
-        year, month, dataset, chunksize=100000,
-        plot_area='pc_world',FILTER_STRATOSPHERIC_CLOUDS=False):
+def run(ifilepath_calipso, opath, dnts, satzs,
+        year, month, dataset, ifilepath_amsr=None, chunksize=100000,
+        plot_area='pc_world', FILTER_STRATOSPHERIC_CLOUDS=False):
     """
     Main function to be called in external script to run atrain_plot.
 
@@ -665,7 +761,20 @@ def run(ipath, ifile, opath, dnts, satzs,
 
     global filter_stratospheric
     filter_stratospheric = FILTER_STRATOSPHERIC_CLOUDS
-    print('Filter stratospheric clouds: ',filter_stratospheric)
+
+    print('\n################ OPTIONS ################\n')
+    print('CALIOP matchup file: ', ifilepath_calipso)
+    print('Output path: ', opath)
+    print('DNTs: ', dnts)
+    print('Satellize Zenith limits: ', satzs)
+    print('Imager dataset: ', dataset)
+    if ifilepath_amsr is not None:
+        print('Processing AMSR2 LWP: YES')
+        print('AMSR2 matchup file: ', ifilepath_amsr)
+    else:
+        print('Processing AMSR2 LWP: NO')
+    print('Filter stratospheric clouds: ', filter_stratospheric)
+    print('\n#########################################\n')
     
     # if dnts is single string convert to list
     if isinstance(dnts, str):
@@ -678,14 +787,25 @@ def run(ipath, ifile, opath, dnts, satzs,
     if dataset not in ['CCI', 'CLAAS']:
         raise Exception('Dataset {} not available!'.format(dataset))
 
+    # define plotting area
+    module_path = os.path.dirname(__file__)
+    adef = load_area(os.path.join(module_path, 'areas.yaml'),
+                     plot_area)
+
+    # get output grid size/lat/lon
+    out_size = adef.size
+    lon, lat = adef.get_lonlats()
+
+    # get crs for plotting
+    crs = adef.to_cartopy_crs()
+
     ofile_cma = 'CMA_{}_CALIOP_{}{}_DNT-{}_SATZ-{}.png'
     ofile_cph = 'CPH_{}_CALIOP_{}{}_DNT-{}_SATZ-{}.png'
     ofile_ctth = 'CTTH_{}_CALIOP_{}{}_DNT-{}_SATZ-{}.png'
-    ofile_scat = 'SCATTER_{}_CALIOP_{}{}_DNT-{}_SATZ-{}.png'
+    ofile_scat = 'CTX_SCATTER_{}_CALIOP_{}{}_DNT-{}_SATZ-{}.png'
 
     # iterate over satzen limitations
     for satz_lim in satzs:
-
         # if satz_lim list item is string convert it to float
         if satz_lim is not None:
             if isinstance(satz_lim, str):
@@ -695,6 +815,8 @@ def run(ipath, ifile, opath, dnts, satzs,
                     msg = 'Cannot convert {} to float'
                     raise Exception(msg.format(satz_lim))
 
+        print('------------- SATZ = {} -------------'.format(satz_lim))
+
         for dnt in dnts:
 
             dnt = dnt.upper()
@@ -702,7 +824,7 @@ def run(ipath, ifile, opath, dnts, satzs,
                 raise Exception('DNT {} not recognized'.format(dnt))
 
             print('---------------------------')
-            print('\nDNT = {}\n'.format(dnt))
+            print('DNT = {}'.format(dnt))
             print('---------------------------')
 
             # set output filenames for CPH and CMA plot
@@ -712,22 +834,13 @@ def run(ipath, ifile, opath, dnts, satzs,
             ofile_scat_tmp = ofile_scat.format(dataset, year, month, dnt, satz_lim)
 
             # get matchup data
-            data, latlon = _get_matchup_file_content(os.path.join(ipath, ifile),
+            data, latlon = _get_calipso_matchup_file_content(ifilepath_calipso,
                                                      chunksize, dnt, satz_lim,
                                                      dataset)
-
-            # define plotting area
-            module_path = os.path.dirname(__file__)
-            adef = load_area(os.path.join(module_path, 'areas.yaml'),
-                             plot_area)
 
             # for each input pixel get target pixel index
             resampler = BucketResampler(adef, latlon['lon'], latlon['lat'])
             idxs = resampler.idxs
-
-            # get output grid size/lat/lon
-            out_size = adef.size
-            lon, lat = adef.get_lonlats()
 
             # do validation
             cma_scores = _do_cma_cph_validation(data, adef, out_size,
@@ -737,8 +850,6 @@ def run(ipath, ifile, opath, dnts, satzs,
             ctth_scores = _do_ctth_validation(data, adef, out_size,
                                                 idxs, resampler, thrs=10)
 
-            # get crs for plotting
-            crs = adef.to_cartopy_crs()
 
             # get cos(lat) filed for weighted average on global regular grid
             cosfield = _get_cosfield(lat)
@@ -750,4 +861,47 @@ def run(ipath, ifile, opath, dnts, satzs,
                        dnt, 'CPH', cosfield)
             _make_plot_CTTH(ctth_scores, os.path.join(opath, ofile_ctth_tmp),
                             crs, dnt, 'CTTH', cosfield)
-            _make_scatter(data, os.path.join(opath, ofile_scat_tmp), dnt, dataset)
+            _make_scatter_ctx(data, os.path.join(opath, ofile_scat_tmp), dnt, dataset)
+
+    if ifilepath_amsr is not None:
+        amsr_lwp, imager_lwp, amsr_lat, amsr_lon = ga.read_amsr_lwp(ifilepath_amsr, dataset)
+
+        ofile_lwp = 'LWP_{}_AMSR2_{}{}.png'.format(dataset, year, month)
+        ofile_lwp_scatter = 'LWP_SCATTER_{}_CALIOP_{}{}.png'.format(dataset, year, month)
+
+        amsr_lwp = da.from_array(amsr_lwp, chunks=chunksize)
+        imager_lwp = da.from_array(imager_lwp, chunks=chunksize)
+        amsr_lat = da.from_array(amsr_lat, chunks=chunksize)
+        amsr_lon = da.from_array(amsr_lon, chunks=chunksize)
+
+        # for each input pixel get target pixel index
+        resampler = BucketResampler(adef, amsr_lon, amsr_lat)
+
+
+        amsr_mean = resampler.get_average(amsr_lwp)
+        imager_mean = resampler.get_average(imager_lwp)
+        bias = resampler.get_average(imager_lwp - amsr_lwp)
+        bcrmse = np.sqrt(resampler.get_average((imager_lwp - amsr_lwp - np.mean((imager_lwp - amsr_lwp)))**2))
+        rmse = np.sqrt(resampler.get_average((imager_lwp - amsr_lwp)**2))
+        mae = resampler.get_average(np.abs(imager_lwp - amsr_lwp))
+
+        results = {'AMSR2 LWP mean':  [amsr_mean.reshape(adef.shape), 0, 100, 'rainbow'],
+                   '{} LWP mean'.format(dataset): [imager_mean.reshape(adef.shape), 0, 100, 'rainbow'],
+                   'LWP Bias': [bias.reshape(adef.shape), -30, 30, 'bwr'],
+                   'LWP BC-RMSE': [bcrmse.reshape(adef.shape), None, None, 'rainbow'],
+                   'LWP RMSE': [rmse.reshape(adef.shape), 0, 100, 'rainbow'],
+                   'LWP Nobs': [resampler.get_count(), None, None, 'rainbow']}
+                   #'MAE': [mae.reshape(adef.shape), 0, 100, 'rainbow']}
+
+        _make_plot_lwp(results, crs, os.path.join(opath, ofile_lwp))
+        _make_scatter_lwp(amsr_lwp, imager_lwp, os.path.join(opath, ofile_lwp_scatter))
+
+
+
+
+
+
+
+
+
+
