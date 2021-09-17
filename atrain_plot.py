@@ -23,7 +23,7 @@ from collections import OrderedDict
 from atrain_plot.scores import ScoreUtils
 import atrain_plot.get_imager as gi
 import atrain_plot.get_caliop as gc
-import atrain_plot.get_amsr as ga
+import atrain_plot.get_amsr2 as ga
 from scipy.stats import pearsonr
 
 matplotlib.use('Agg')
@@ -608,7 +608,7 @@ def _make_plot_CTTH(scores, optf, crs, dnt, var, cosfield):
     print('SAVED ', os.path.basename(optf))
 
 def _make_scatter_lwp(X, Y, optf):
-
+    from matplotlib.colors import LogNorm
     X = X.compute()
     Y = Y.compute()
 
@@ -629,10 +629,10 @@ def _make_scatter_lwp(X, Y, optf):
     fig = plt.figure(figsize=(16,9))
     ax = fig.add_subplot(221)
     h = ax.hist2d(X, Y, bins=34,
-                  cmap=plt.get_cmap('viridis'), cmin=1,
-                  vmin=0, vmax=50000, range=[[0,200],[0,200]])#, norm=LogNorm())
+                  cmap=plt.get_cmap('inferno_r'), cmin=1,
+                  vmin=1, vmax=5000, range=[[0,170],[0,170]])#, norm=LogNorm())
     cbar = plt.colorbar(h[3])
-    ax.plot(dummy, dummy, color='black')
+    ax.plot(dummy, dummy, color='white', linestyle='--')
     ax.set_xlim(0, 170)
     ax.set_ylim(0, 170)
     ax.set_ylabel(r'CCI LWP [g m$^{-2}$]')
@@ -642,7 +642,7 @@ def _make_scatter_lwp(X, Y, optf):
     ax = fig.add_subplot(222)
     ax.grid(color='grey', linestyle='--')
     ax.hist(Y-X, bins=120, density=False,
-            weights=(100*(np.ones(X.shape[0])/X.shape[0])), color='black')
+            weights=(100*(np.ones(X.shape[0])/X.shape[0])), range=[-220,220], color='black')
     ax.set_xlabel(r'Difference CCI - AMSR2 [g m$^{-2}$]')
     ax.set_ylabel('Percent of data [%]')
     ax.set_title('CCI - AMSR2 LWP difference distribution', fontweight='bold')
