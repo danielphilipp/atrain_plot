@@ -429,7 +429,7 @@ def _along_track_plot(colCal, colImg, date, make_table, savepath):
         fig = plt.figure(figsize=(15, 5))
         ax = fig.add_subplot(1, 1, 1)
 
-    ax.set_ylim([0, 19])
+    ax.set_ylim([0, 30])
     ax.set_ylabel("height [km]")
     ax.set_xlabel('lat/lon/time')
     ax.set_facecolor('lightskyblue')
