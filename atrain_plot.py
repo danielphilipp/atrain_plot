@@ -25,9 +25,10 @@ import atrain_plot.get_imager as gi
 import atrain_plot.get_caliop as gc
 import atrain_plot.get_amsr2 as ga
 import atrain_plot.get_dardar as gd
+import atrain_plot.scatter_plots as scat
+import atrain_plot.map_plots as mp
 from scipy.stats import pearsonr
 
-matplotlib.use('Agg')
 
 import warnings     # suppress warning of masked array/nanmean
 warnings.filterwarnings("ignore", message="invalid value encountered in true_divide")
@@ -83,6 +84,12 @@ def _get_calipso_matchup_file_content(ipath, chunksize, dnt='ALL',
         tropo_height = da.from_array(gc.get_tropopause_height(caliop), chunks=chunksize)
     sev_ctp = da.from_array(gi.get_imager_ctp(imager), chunks=(chunksize))
     cal_ctp = da.from_array(gc.get_caliop_ctp(caliop), chunks=(chunksize))
+
+    if dataset == 'CCI':
+        sev_quality = da.from_array(imager['cpp_quality'][:].astype(int), chunks=chunksize)
+        bad_quality_imager = np.bitwise_and(sev_quality, 3) > 0
+        sev_cth[bad_quality_imager] = np.nan
+        sev_ctt[bad_quality_imager] = np.nan
 
     # get CMA, CPH, VZA, SZA, LAT and LON
     sev_cph = da.from_array(gi.get_imager_cph(imager), chunks=chunksize)
@@ -523,491 +530,8 @@ def _weighted_spatial_average(data, cosfield):
     return da.nansum(data * cosfield) / da.nansum(cosfield)
 
 
-def _make_plot(scores, optf, crs, dnt, var, cosfield):
-    """ Plot CMA/CPH scores. """
-
-    fig = plt.figure(figsize=(16, 7))
-    for cnt, s in enumerate(scores.keys()):
-        values = scores[s]
-        values[0] = da.where(scores['Nobs'][0] < 50, np.nan, values[0])
-        cmap = plt.get_cmap(values[3])#.copy()
-        cmap.set_bad('w')
-        ax = fig.add_subplot(4, 4, cnt + 1, projection=crs)
-        ims = ax.imshow(values[0],
-                        transform=crs,
-                        extent=crs.bounds,
-                        vmin=values[1],
-                        vmax=values[2],
-                        cmap=cmap,
-                        origin='upper',
-                        interpolation='none'
-                        )
-        ax.coastlines(color='black')
-        # mean = _weighted_spatial_average(values[0], cosfield).compute()
-        # mean = '{:.2f}'.format(da.nanmean(values[0]).compute())
-        mean = ''
-        ax.set_title(var + ' ' + s + ' ' + dnt + ' {}'.format(mean))
-        plt.colorbar(ims)
-    plt.tight_layout()
-    plt.savefig(optf)
-    print('SAVED ', os.path.basename(optf))
-
-
-def _make_plot_lwp(results, crs, optf):
-    """ Plot LWP stats on spatial grid. """
-    fig = plt.figure(figsize=(16, 6))
-
-    for cnt, s in enumerate(results.keys()):
-        ax = fig.add_subplot(2, 3, cnt+1, projection=crs)
-
-        ims = ax.imshow(results[s][0],
-                        transform=crs,
-                        extent=crs.bounds,
-                        vmin=results[s][1],
-                        vmax=results[s][2],
-                        cmap=plt.get_cmap(results[s][3]),
-                        origin='upper',
-                        interpolation='none'
-                        )
-        ax.coastlines(color='black')
-        cbar = plt.colorbar(ims)
-        cbar.set_label(s + r' [g m$^{-2}$]')
-        ax.set_title(s, fontweight='bold')
-
-    plt.tight_layout()
-    plt.savefig(optf)
-    print('SAVED ', os.path.basename(optf))
-
-
-def _make_plot_iwp(results, crs, optf):
-    """ Plot LWP stats on spatial grid. """
-    fig = plt.figure(figsize=(16, 6))
-
-    for cnt, s in enumerate(results.keys()):
-        ax = fig.add_subplot(2, 3, cnt+1, projection=crs)
-
-        ims = ax.imshow(results[s][0],
-                        transform=crs,
-                        extent=crs.bounds,
-                        vmin=results[s][1],
-                        vmax=results[s][2],
-                        cmap=plt.get_cmap(results[s][3]),
-                        origin='upper',
-                        interpolation='none'
-                        )
-        ax.coastlines(color='black')
-        cbar = plt.colorbar(ims)
-        cbar.set_label(s + r' [g m$^{-2}$]')
-        ax.set_title(s, fontweight='bold')
-
-    plt.tight_layout()
-    plt.savefig(optf)
-    print('SAVED ', os.path.basename(optf))
-
-
-def _make_plot_cer(results, crs, optf):
-    """ Plot LWP stats on spatial grid. """
-    fig = plt.figure(figsize=(16, 6))
-
-    for cnt, s in enumerate(results.keys()):
-        ax = fig.add_subplot(2, 3, cnt+1, projection=crs)
-
-        ims = ax.imshow(results[s][0],
-                        transform=crs,
-                        extent=crs.bounds,
-                        vmin=results[s][1],
-                        vmax=results[s][2],
-                        cmap=plt.get_cmap(results[s][3]),
-                        origin='upper',
-                        interpolation='none'
-                        )
-        ax.coastlines(color='black')
-        cbar = plt.colorbar(ims)
-        cbar.set_label(s + r' [$\mu$m]')
-        ax.set_title(s, fontweight='bold')
-
-    plt.tight_layout()
-    plt.savefig(optf)
-    print('SAVED ', os.path.basename(optf))
-
-
-def _make_plot_CTTH(scores, optf, crs, dnt, var, cosfield):
-    """ Plot CTH/CTT biases. """
-    fig = plt.figure(figsize=(14, 9))
-    for cnt, s in enumerate(scores.keys()):
-        values = scores[s]
-        masked_values = np.ma.array(values[0], mask=np.isnan(values[0]))
-        cmap = plt.get_cmap(values[3])#.copy()
-        cmap.set_bad('grey', 1.)
-        ax = fig.add_subplot(4, 3, cnt + 1, projection=crs)  # ccrs.Robinson()
-        ims = ax.imshow(masked_values,
-                        transform=crs,
-                        extent=crs.bounds,
-                        vmin=values[1],
-                        vmax=values[2],
-                        cmap=cmap,
-                        origin='upper',
-                        interpolation='none'
-                        )
-        ax.coastlines(color='black')
-        # mean = ''
-        mean = _weighted_spatial_average(values[0], cosfield).compute()
-        mean = '{:.2f}'.format(da.nanmean(values[0]).compute())
-        ax.set_title(s + ' ' + dnt + ' {}'.format(mean))
-        plt.colorbar(ims)
-    plt.tight_layout()
-    plt.savefig(optf)
-    plt.close()
-    print('SAVED ', os.path.basename(optf))
-
-
 def _gaussian(bins, mu, sigma):
    return 1/(sigma * np.sqrt(2 * np.pi)) * np.exp( - (bins - mu)**2 / (2 * sigma**2) ) 
-
-
-def _make_scatter_lwp(X, Y, optf):
-    from matplotlib.colors import LogNorm
-    if isinstance(X, da.Array):
-        X = X.compute()
-    if isinstance(Y, da.Array):
-        Y = Y.compute()
-
-    N = X.shape[0]
-    bias = np.mean(Y - X)
-    std = np.sqrt(1 / N * np.sum((Y - X - bias) ** 2))
-    rms = np.sqrt(1 / N * np.sum((Y - X) ** 2))
-
-    r, p = pearsonr(X, Y)
-    ann = 'Corr    : {:.2f}\n' + \
-          'RMSE    : {:.2f}\n' + \
-          'bc-RMSE : {:.2f}\n' + \
-          'Bias    : {:.2f}\n' + \
-          'N       : {:d}'
-    ann = ann.format(r, rms, std, bias, N)
-
-    xmin = np.log10(0.1)
-    xmax = np.log10(400)
-    ymin = np.log10(0.1)
-    ymax = np.log10(400)
-    x_bins = np.logspace(xmin, xmax, 34)
-    y_bins = np.logspace(ymin, ymax, 34)
-
-    dummy = np.arange(0, X.shape[0])
-    fig = plt.figure(figsize=(16, 9))
-    ax = fig.add_subplot(221)
-    h = ax.hist2d(X, Y, bins=[x_bins, y_bins],
-                  cmap=plt.get_cmap('jet'), cmin=1,
-                  vmin=1, vmax=70000, norm=LogNorm())
-    cbar = plt.colorbar(h[3])
-    ax.plot(dummy, dummy, color='black', linestyle='--')
-    ax.set_xlim(x_bins[0], x_bins[-1])
-    ax.set_ylim(y_bins[0], y_bins[-1])
-    ax.set_ylabel(r'CCI LWP [g m$^{-2}$]')
-    ax.set_xlabel(r'AMSR2 LWP [g m$^{-2}$]')
-    ax.set_title('Cloud_cci+ LWP vs. AMSR2 LWP', fontweight='bold')
-    ax.set_yscale('log')
-    ax.set_xscale('log')
-
-    ax = fig.add_subplot(222)
-    ax.grid(color='grey', linestyle='--')
-    ax.hist(Y-X, bins=120, density=False,
-            weights=(100*(np.ones(X.shape[0])/X.shape[0])), range=[-220,220], color='black')
-    ax.set_xlabel(r'Difference CCI - AMSR2 [g m$^{-2}$]')
-    ax.set_ylabel('Percent of data [%]')
-    ax.set_title('CCI - AMSR2 LWP difference distribution', fontweight='bold')
-    ax.annotate(ann, xy=(0.05, 0.75), xycoords='axes fraction')
-
-    xmin = np.log10(0.1)
-    xmax = np.log10(300)
-    x_bins = np.logspace(xmin, xmax, 60)
-
-    ax1 = fig.add_subplot(223)
-    ax1.grid(color='grey', linestyle='--')
-    ax1.hist(Y, bins=x_bins, density=False, weights=(100*(np.ones(X.shape[0])/X.shape[0])))
-    ax1.set_title('Cloud_cci+ LWP distribution', fontweight='bold')
-    ax1.set_xlabel(r'CCI LWP [g m$^{-2}$]')
-    ax1.set_ylabel('Percent of data [%]')
-    ax1.set_xlim(x_bins[0], x_bins[-1])
-    ylim_1 = ax1.get_ylim()
-    ax1.set_xscale('log')
-
-    xmin = np.log10(0.1)
-    xmax = np.log10(300)
-    x_bins = np.logspace(xmin, xmax, 60)
-
-    ax2 = fig.add_subplot(224)
-    ax2.grid(color='grey', linestyle='--')
-    ax2.hist(X, bins=x_bins, density=False, weights=(100*(np.ones(X.shape[0])/X.shape[0])), color='red')
-    ax2.set_title('AMSR2 LWP distribution', fontweight='bold')
-    ax2.set_xlabel(r'AMSR2 LWP [g m$^{-2}$]')
-    ax2.set_ylabel('Percent of data [%]')
-    ax2.set_xlim(x_bins[0], x_bins[-1])
-    ax2.set_xscale('log')
-    ylim_2 = ax2.get_ylim()
-
-    ymax = max(ylim_1[1], ylim_2[1])
-    ax1.set_ylim((0, ymax))
-    ax2.set_ylim((0, ymax))
-
-    plt.tight_layout()
-    if optf is not None:
-        plt.savefig(optf)
-        print('SAVED: {}'.format(optf))
-    else:
-        plt.show()
-
-    return ann
-
-
-def _make_scatter_iwp(X, Y, optf):
-    from matplotlib.colors import LogNorm
-    if isinstance(X, da.Array):
-        X = X.compute()
-    if isinstance(Y, da.Array):
-        Y = Y.compute()
-
-    N = X.shape[0]
-    bias = np.mean(Y - X)
-    std = np.sqrt(1 / N * np.sum((Y - X - bias) ** 2))
-    rms = np.sqrt(1 / N * np.sum((Y - X) ** 2))
-
-    r, p = pearsonr(X, Y)
-    ann = 'Corr    : {:.2f}\n' + \
-          'RMSE    : {:.2f}\n' + \
-          'bc-RMSE : {:.2f}\n' + \
-          'Bias    : {:.2f}\n' + \
-          'N       : {:d}'
-    ann = ann.format(r, rms, std, bias, N)
-
-    xmin = np.log10(0.5)
-    xmax = np.log10(300)
-    ymin = np.log10(0.5)
-    ymax = np.log10(300)
-    x_bins = np.logspace(xmin, xmax, 34)
-    y_bins = np.logspace(ymin, ymax, 34)
-
-    dummy = np.arange(0, X.shape[0])
-    fig = plt.figure(figsize=(16, 9))
-    ax = fig.add_subplot(221)
-    h = ax.hist2d(X, Y, bins=[x_bins, y_bins],
-                  cmap=plt.get_cmap('jet'), cmin=1,
-                  vmin=1, vmax=30000, norm=LogNorm())
-    cbar = plt.colorbar(h[3])
-    ax.plot(dummy, dummy, color='black', linestyle='--')
-    ax.set_xlim(x_bins[0], x_bins[-1])
-    ax.set_ylim(y_bins[0], y_bins[-1])
-    ax.set_ylabel(r'CCI IWP [g m$^{-2}$]')
-    ax.set_xlabel(r'DARDAR IWP [g m$^{-2}$]')
-    ax.set_title('Cloud_cci+ LWP vs. DARDAR IWP', fontweight='bold')
-    ax.set_yscale('log')
-    ax.set_xscale('log')
-
-    ax = fig.add_subplot(222)
-    ax.grid(color='grey', linestyle='--')
-    ax.hist(Y-X, bins=120, density=False,
-            weights=(100*(np.ones(X.shape[0])/X.shape[0])), range=[-220,220], color='black')
-    ax.set_xlabel(r'Difference CCI - DARDAR [g m$^{-2}$]')
-    ax.set_ylabel('Percent of data [%]')
-    ax.set_title('CCI - DARDAR IWP difference distribution', fontweight='bold')
-    ax.annotate(ann, xy=(0.05, 0.75), xycoords='axes fraction')
-
-    xmin = np.log10(0.1)
-    xmax = np.log10(300)
-    x_bins = np.logspace(xmin, xmax, 60)
-
-    ax1 = fig.add_subplot(223)
-    ax1.grid(color='grey', linestyle='--')
-    ax1.hist(Y, bins=x_bins, density=False, weights=(100*(np.ones(X.shape[0])/X.shape[0])))
-    ax1.set_title('Cloud_cci+ IWP distribution', fontweight='bold')
-    ax1.set_xlabel(r'CCI IWP [g m$^{-2}$]')
-    ax1.set_ylabel('Percent of data [%]')
-    ax1.set_xlim(x_bins[0], x_bins[-1])
-    ylim_1 = ax1.get_ylim()
-    ax1.set_xscale('log')
-
-    xmin = np.log10(0.1)
-    xmax = np.log10(300)
-    x_bins = np.logspace(xmin, xmax, 60)
-
-    ax2 = fig.add_subplot(224)
-    ax2.grid(color='grey', linestyle='--')
-    ax2.hist(X, bins=x_bins, density=False, weights=(100*(np.ones(X.shape[0])/X.shape[0])), color='red')
-    ax2.set_title('DARDAR IWP distribution', fontweight='bold')
-    ax2.set_xlabel(r'DARDAR IWP [g m$^{-2}$]')
-    ax2.set_ylabel('Percent of data [%]')
-    ax2.set_xlim(x_bins[0], x_bins[-1])
-    ax2.set_xscale('log')
-    ylim_2 = ax2.get_ylim()
-
-    ymax = max(ylim_1[1], ylim_2[1])
-    ax1.set_ylim((0, ymax))
-    ax2.set_ylim((0, ymax))
-
-    plt.tight_layout()
-    if optf is not None:
-        plt.savefig(optf)
-        print('SAVED: {}'.format(optf))
-    else:
-        plt.show()
-
-    return ann
-
-
-def _make_scatter_cer(X, Y, optf):
-    from matplotlib.colors import LogNorm
-    if isinstance(X, da.Array):
-        X = X.compute()
-    if isinstance(Y, da.Array):
-        Y = Y.compute()
-
-    N = X.shape[0]
-    bias = np.mean(Y - X)
-    std = np.sqrt(1 / N * np.sum((Y - X - bias) ** 2))
-    rms = np.sqrt(1 / N * np.sum((Y - X) ** 2))
-
-    r, p = pearsonr(X, Y)
-    ann = 'Corr    : {:.2f}\n' + \
-          'RMSE    : {:.2f}\n' + \
-          'bc-RMSE : {:.2f}\n' + \
-          'Bias    : {:.2f}\n' + \
-          'N       : {:d}'
-    ann = ann.format(r, rms, std, bias, N)
-
-    xmin = np.log10(0.5)
-    xmax = np.log10(300)
-    ymin = np.log10(0.5)
-    ymax = np.log10(300)
-    x_bins = np.logspace(xmin, xmax, 34)
-    y_bins = np.logspace(ymin, ymax, 34)
-
-    dummy = np.arange(0, X.shape[0])
-    fig = plt.figure(figsize=(16, 9))
-    ax = fig.add_subplot(221)
-    h = ax.hist2d(X, Y, bins=[x_bins, y_bins],
-                  cmap=plt.get_cmap('jet'), cmin=1,
-                  vmin=1, vmax=30000, norm=LogNorm())
-    cbar = plt.colorbar(h[3])
-    ax.plot(dummy, dummy, color='black', linestyle='--')
-    ax.set_xlim(x_bins[0], x_bins[-1])
-    ax.set_ylim(y_bins[0], y_bins[-1])
-    ax.set_ylabel(r'CCI CER [$\mu$m]')
-    ax.set_xlabel(r'DARDAR CER [$\mu$m]')
-    ax.set_title('Cloud_cci+ LWP vs. DARDAR CER', fontweight='bold')
-    ax.set_yscale('log')
-    ax.set_xscale('log')
-
-    ax = fig.add_subplot(222)
-    ax.grid(color='grey', linestyle='--')
-    ax.hist(Y-X, bins=120, density=False,
-            weights=(100*(np.ones(X.shape[0])/X.shape[0])), range=[-220,220], color='black')
-    ax.set_xlabel(r'Difference CCI - DARDAR [$\mu$m]')
-    ax.set_ylabel('Percent of data [%]')
-    ax.set_title('CCI - DARDAR CER difference distribution', fontweight='bold')
-    ax.annotate(ann, xy=(0.05, 0.75), xycoords='axes fraction')
-
-    xmin = np.log10(0.1)
-    xmax = np.log10(300)
-    x_bins = np.logspace(xmin, xmax, 60)
-
-    ax1 = fig.add_subplot(223)
-    ax1.grid(color='grey', linestyle='--')
-    ax1.hist(Y, bins=x_bins, density=False, weights=(100*(np.ones(X.shape[0])/X.shape[0])))
-    ax1.set_title('Cloud_cci+ CER distribution', fontweight='bold')
-    ax1.set_xlabel(r'CCI CER [$\mu$m]')
-    ax1.set_ylabel('Percent of data [%]')
-    ax1.set_xlim(x_bins[0], x_bins[-1])
-    ylim_1 = ax1.get_ylim()
-    ax1.set_xscale('log')
-
-    xmin = np.log10(0.1)
-    xmax = np.log10(300)
-    x_bins = np.logspace(xmin, xmax, 60)
-
-    ax2 = fig.add_subplot(224)
-    ax2.grid(color='grey', linestyle='--')
-    ax2.hist(X, bins=x_bins, density=False, weights=(100*(np.ones(X.shape[0])/X.shape[0])), color='red')
-    ax2.set_title('DARDAR CER distribution', fontweight='bold')
-    ax2.set_xlabel(r'DARDAR CER [$\mu$m]')
-    ax2.set_ylabel('Percent of data [%]')
-    ax2.set_xlim(x_bins[0], x_bins[-1])
-    ax2.set_xscale('log')
-    ylim_2 = ax2.get_ylim()
-
-    ymax = max(ylim_1[1], ylim_2[1])
-    ax1.set_ylim((0, ymax))
-    ax2.set_ylim((0, ymax))
-
-    plt.tight_layout()
-    if optf is not None:
-        plt.savefig(optf)
-        print('SAVED: {}'.format(optf))
-    else:
-        plt.show()
-
-    return ann
-
-
-def _make_scatter_ctx(data, optf, dnt, dataset):
-    """ Plot CTH/CTT scatter plots. """
-
-    from scipy.stats import linregress
-    from matplotlib.colors import LogNorm
-
-    fig = plt.figure(figsize=(16, 4))
-    # variable to be plotted
-    vars = ['cth', 'ctt','ctp']
-    # limits for plotting
-    lims = {'cth': (0, 25), 'ctt': (150, 325),'ctp': (0,1100)}
-    # units for plotting
-    units = {'cth': 'km', 'ctt': 'm', 'ctp':'hPa'}
-
-    for cnt, variable in enumerate(vars):
-        x = data['imager_' + variable].compute()
-        y = data['caliop_' + variable].compute()
-
-        # divide CCI CTH by 1000 to convert from m to km
-        if variable == 'cth': # and dataset == 'CCI':
-            x /= 1000
-            y /= 1000
-
-        # dummy data for 1:1 line
-        dummy = np.arange(0, lims[variable][1])
-
-        # remove nans in both arrays
-        mask = np.logical_or(np.isnan(x), np.isnan(y))
-        x = x[~mask]
-        y = y[~mask]
-
-        ax = fig.add_subplot(1, 3, cnt + 1)
-        h = ax.hist2d(x, y,
-                      bins=(100, 100),
-                      cmap=plt.get_cmap('YlOrRd'),
-                      norm=LogNorm())
-
-        # make linear regression
-        reg = linregress(x, y)
-        # plot linear regression
-        ax.plot(reg[0] * dummy + reg[1], color='blue')
-        # plot 1:1 line
-        ax.plot(dummy, dummy, color='black')
-
-        ax.set_xlabel('imager_{} [{}]'.format(variable, units[variable]))
-        ax.set_ylabel('caliop_{} [{}]'.format(variable, units[variable]))
-        ax.set_xlim(lims[variable])
-        ax.set_ylim(lims[variable])
-        ax.set_title(variable.upper() + ' ' + dnt, fontweight='bold')
-        # write regression parameters to plot
-        ax.annotate(xy=(0.05, 0.9),
-                    s='r={:.2f}\nr**2={:.2f}'.format(reg[2], reg[2] * reg[2]),
-                    xycoords='axes fraction', color='blue', fontweight='bold',
-                    backgroundcolor='lightgrey')
-
-        plt.colorbar(h[3], ax=ax)
-
-    plt.tight_layout()
-    plt.savefig(optf)
-    plt.close()
-    print('SAVED ', os.path.basename(optf))
 
 
 def _process_cer_or_lwp_or_iwp(truth_xwp, imager_xwp, truth_lat, truth_lon, adef, var, dataset, chunksize):
@@ -1047,19 +571,16 @@ def _print_opts(ifilepath_calipso, ifilepath_amsr, ifilepath_dardar, opath, dnts
 
     if ifilepath_calipso is not None:
         print('Processing CALIPSO CFC/CPH/CTH: YES')
-        print('CALIPSO matchup file: ', ifilepath_calipso)
     else:
         print('Processing CALIPSO CFC/CPH/CTH: NO')
 
     if ifilepath_amsr is not None:
         print('Processing AMSR2 LWP: YES')
-        print('AMSR2 matchup file: ', ifilepath_amsr)
     else:
         print('Processing AMSR2 LWP: NO')
 
     if ifilepath_dardar is not None:
         print('Processing DARDAR IWP: YES')
-        print('DARDAR matchup file: ', ifilepath_dardar)
     else:
         print('Processing DARDAR IWP: NO')
 
@@ -1178,15 +699,16 @@ def run(opath, year, month, dataset, ifilepath_calipso=None, ifilepath_amsr=None
                 cosfield = _get_cosfield(lat)
 
                 # do plotting
-                _make_plot(cma_scores, os.path.join(opath, ofile_cma_tmp), crs,
+                mp.make_plot_cma_cph(cma_scores, os.path.join(opath, ofile_cma_tmp), crs,
                            dnt, 'CMA', cosfield)
-                _make_plot(cph_scores, os.path.join(opath, ofile_cph_tmp), crs,
+                mp.make_plot_cma_cph(cph_scores, os.path.join(opath, ofile_cph_tmp), crs,
                            dnt, 'CPH', cosfield)
-                _make_plot_CTTH(ctth_scores, os.path.join(opath, ofile_ctth_tmp),
+                mp.make_plot_CTTH(ctth_scores, os.path.join(opath, ofile_ctth_tmp),
                                 crs, dnt, 'CTTH', cosfield)
-                _make_scatter_ctx(data, os.path.join(opath, ofile_scat_tmp), dnt, dataset)
+                scat.make_scatter_ctx(data, os.path.join(opath, ofile_scat_tmp), dnt, dataset)
 
     if ifilepath_amsr is not None:
+        # LWP plots
         amsr_lwp, imager_lwp, amsr_lat, amsr_lon = ga.read_amsr_lwp(ifilepath_amsr, dataset)
 
         ofile_lwp = 'LWP_{}_AMSR2_{}{}.png'.format(dataset, year, month)
@@ -1195,8 +717,8 @@ def run(opath, year, month, dataset, ifilepath_calipso=None, ifilepath_amsr=None
         results = _process_cer_or_lwp_or_iwp(amsr_lwp, imager_lwp, amsr_lat, amsr_lon,
                                       adef, 'AMSR2 LWP', dataset, chunksize)
 
-        _make_plot_lwp(results, crs, os.path.join(opath, ofile_lwp))
-        _make_scatter_lwp(amsr_lwp, imager_lwp, os.path.join(opath, ofile_lwp_scatter))
+        mp.make_plot_lwp(results, crs, os.path.join(opath, ofile_lwp))
+        scat.make_scatter_lwp(amsr_lwp, imager_lwp, os.path.join(opath, ofile_lwp_scatter))
 
     if ifilepath_dardar is not None:
         # IWP plots
@@ -1208,8 +730,8 @@ def run(opath, year, month, dataset, ifilepath_calipso=None, ifilepath_amsr=None
         results = _process_cer_or_lwp_or_iwp(dardar_iwp, imager_iwp, dardar_lat, dardar_lon,
                                       adef, 'DARDAR IWP', dataset, chunksize)
 
-        _make_plot_iwp(results, crs, os.path.join(opath, ofile_iwp))
-        _make_scatter_iwp(dardar_iwp, imager_iwp, os.path.join(opath, ofile_iwp_scatter))
+        mp.make_plot_iwp(results, crs, os.path.join(opath, ofile_iwp))
+        scat.make_scatter_iwp(dardar_iwp, imager_iwp, os.path.join(opath, ofile_iwp_scatter))
 
         # CER plots
         dardar_cer, imager_cer, dardar_lat, dardar_lon = gd.read_dardar_cer(ifilepath_dardar, dataset)
@@ -1220,5 +742,5 @@ def run(opath, year, month, dataset, ifilepath_calipso=None, ifilepath_amsr=None
         results = _process_cer_or_lwp_or_iwp(dardar_cer, imager_cer, dardar_lat, dardar_lon,
                                       adef, 'DARDAR CER', dataset, chunksize)
 
-        _make_plot_cer(results, crs, os.path.join(opath, ofile_cer))
-        _make_scatter_cer(dardar_cer, imager_cer, os.path.join(opath, ofile_cer_scatter))
+        mp.make_plot_cer(results, crs, os.path.join(opath, ofile_cer))
+        scat.make_scatter_cer(dardar_cer, imager_cer, os.path.join(opath, ofile_cer_scatter))
